@@ -1021,6 +1021,7 @@ async function handleGoLive() {
 
     state.activeBroadcast = {
       title,
+      description,
       destinations: returnedDests.map((d) => {
         const original = enabledTargets.find((t) => t.id === d.id);
         return {
@@ -1061,6 +1062,13 @@ function setLiveUI(isLive) {
     // Populate Real-Time Platform Status Grid
     renderPlatformLiveGrid();
     startTimer();
+
+    // Schedule delayed metadata reconciliation watchdog (8s post-stream start)
+    setTimeout(() => {
+      if (state.isStreaming) {
+        reconcileActiveBroadcastMetadata();
+      }
+    }, 8000);
   } else {
     stopTimer();
     setStatus('● CONNECTED', 'connected');
@@ -1432,6 +1440,53 @@ async function pollCloudStatus() {
 
     updateLiveHeaderDynamic();
   } catch (_) {}
+}
+
+/**
+ * Post-start metadata reconciliation watchdog (Industry Best Practice)
+ * Verifies titles/descriptions across all platforms 8s into the stream to catch edge cache lag
+ */
+async function reconcileActiveBroadcastMetadata() {
+  if (!state.isStreaming || !state.activeBroadcast?.destinations?.length) return;
+
+  logDiag('Watchdog: Verifying live stream metadata across destinations...');
+
+  try {
+    const res = await fetch(`${state.config.backendUrl}/reconcile-metadata`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
+      },
+      body: JSON.stringify({
+        title: state.activeBroadcast.title,
+        description: state.activeBroadcast.description || '',
+        destinations: state.activeBroadcast.destinations.map((d) => ({
+          id: d.id,
+          platform: d.platform,
+          broadcastId: d.broadcastId,
+          liveVideoId: d.liveVideoId,
+          broadcasterId: d.broadcasterId,
+          accessToken: d.accessToken,
+          refreshToken: d.refreshToken,
+          userToken: d.userToken,
+        })),
+      }),
+    });
+
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.ok) {
+      const patched = (data.results || []).filter((r) => r.patched);
+      if (patched.length > 0) {
+        logDiag(`Watchdog: Reconciled and updated metadata on ${patched.map((p) => p.platform).join(', ')}.`);
+      } else {
+        logDiag('✓ Watchdog: Verified all live titles & descriptions match.');
+      }
+    }
+  } catch (err) {
+    logDiag(`Watchdog note: ${err.message}`);
+  }
 }
 
 /**

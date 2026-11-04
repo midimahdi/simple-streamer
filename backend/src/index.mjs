@@ -11,6 +11,7 @@ import {
   fetchYouTubeStreams,
   getYouTubeBroadcastStatus,
   validateYouTubeChannel,
+  reconcileYouTubeMetadata,
 } from './youtube.mjs';
 import {
   createFacebookLiveVideo,
@@ -18,6 +19,7 @@ import {
   getFacebookLiveStatus,
   validateFacebookPage,
   getAppSecretProof,
+  reconcileFacebookMetadata,
 } from './facebook.mjs';
 import {
   validateTwitchChannel,
@@ -1170,6 +1172,65 @@ function renderAuthErrorHtml(title, message) {
       facebook: fbStatus.status === 'fulfilled' ? fbStatus.value : { isLive: false, status: 'ERROR', error: fbStatus.reason?.message },
       youtube: ytStatus.status === 'fulfilled' ? ytStatus.value : { isLive: false, status: 'ERROR', error: ytStatus.reason?.message },
     });
+  }
+
+  // Delayed metadata reconciliation watchdog endpoint (verifies & patches active stream titles)
+  if (req.method === 'POST' && pathname === '/reconcile-metadata') {
+    let body;
+    try {
+      body = await parseJsonBody(req);
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+
+    const { title, description, destinations } = body;
+    if (!title || !Array.isArray(destinations)) {
+      return sendJson(res, 400, { error: 'Missing title or destinations array.' });
+    }
+
+    console.log(`[Watchdog] Reconciling metadata for "${title}" across ${destinations.length} destination(s)...`);
+
+    const reconciliationPromises = destinations.map(async (rawD) => {
+      const d = { ...(rawD.credentials || {}), ...rawD };
+      try {
+        if (d.platform === 'youtube' && d.broadcastId) {
+          const res = await reconcileYouTubeMetadata({
+            broadcastId: d.broadcastId,
+            title,
+            description,
+            refreshToken: d.refreshToken,
+          });
+          return { id: d.id, platform: 'youtube', ...res };
+        } else if (d.platform === 'facebook' && d.liveVideoId) {
+          const res = await reconcileFacebookMetadata({
+            liveVideoId: d.liveVideoId,
+            title,
+            description,
+            accessToken: d.accessToken,
+          });
+          return { id: d.id, platform: 'facebook', ...res };
+        } else if (d.platform === 'twitch' && d.broadcasterId && d.userToken) {
+          const res = await updateTwitchChannelInfo({
+            broadcasterId: d.broadcasterId,
+            userToken: d.userToken,
+            title,
+          });
+          return { id: d.id, platform: 'twitch', ...res };
+        } else if (d.platform === 'kick' && d.userToken) {
+          const res = await updateKickChannelInfo({
+            userToken: d.userToken,
+            title,
+          });
+          return { id: d.id, platform: 'kick', ...res };
+        }
+        return { id: d.id, platform: d.platform, ok: true, skipped: true };
+      } catch (err) {
+        return { id: d.id, platform: d.platform, ok: false, error: err.message };
+      }
+    });
+
+    const results = await Promise.all(reconciliationPromises);
+    return sendJson(res, 200, { ok: true, results });
   }
 
 

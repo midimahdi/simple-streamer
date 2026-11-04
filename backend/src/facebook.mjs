@@ -198,3 +198,50 @@ export async function validateFacebookPage({ pageId, accessToken }) {
   }
 }
 
+/**
+ * Reconciles Facebook live video title and description.
+ * Checks current metadata and patches if mismatched.
+ */
+export async function reconcileFacebookMetadata({ liveVideoId, title, description, accessToken }) {
+  if (!liveVideoId || !accessToken) return { ok: false, error: 'Missing liveVideoId or accessToken' };
+
+  try {
+    const appsecretProof = getAppSecretProof(accessToken);
+    const proofParam = appsecretProof ? `&appsecret_proof=${encodeURIComponent(appsecretProof)}` : '';
+
+    const getRes = await fetch(
+      `${META_GRAPH_BASE}/${encodeURIComponent(liveVideoId)}?fields=title,description&access_token=${encodeURIComponent(accessToken)}${proofParam}`
+    );
+
+    if (!getRes.ok) {
+      const errData = await getRes.json().catch(() => ({}));
+      return { ok: false, error: errData?.error?.message || `HTTP ${getRes.status}` };
+    }
+
+    const data = await getRes.json();
+    const targetTitle = (title || '').slice(0, 255);
+    const targetDesc = description || '';
+
+    if (data.title === targetTitle && (data.description || '') === targetDesc) {
+      return { ok: true, matched: true };
+    }
+
+    console.log(`[Watchdog] Facebook Live title discrepancy detected. Updating from "${data.title}" to "${targetTitle}"`);
+    const updateRes = await fetch(
+      `${META_GRAPH_BASE}/${encodeURIComponent(liveVideoId)}?access_token=${encodeURIComponent(accessToken)}${proofParam}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: targetTitle,
+          description: targetDesc,
+        }),
+      }
+    );
+
+    return { ok: updateRes.ok, patched: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+

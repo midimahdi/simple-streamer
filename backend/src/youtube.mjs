@@ -295,6 +295,64 @@ export async function getYouTubeBroadcastStatus(broadcastId, refreshToken) {
 }
 
 /**
+ * Reconciles YouTube liveBroadcast metadata (title/description).
+ * Reads current state with 1 quota unit; only issues a 50-unit update if mismatched.
+ */
+export async function reconcileYouTubeMetadata({ broadcastId, title, description, refreshToken }) {
+  if (!broadcastId || !refreshToken) return { ok: false, error: 'Missing broadcastId or refreshToken' };
+
+  try {
+    const token = await getAccessToken(refreshToken);
+    const getUrl = `${YT_API_BASE}/liveBroadcasts?part=snippet&id=${encodeURIComponent(broadcastId)}`;
+    const res = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, error: errText };
+    }
+
+    const data = await res.json();
+    const current = data.items?.[0]?.snippet;
+    if (!current) return { ok: false, error: 'Broadcast not found' };
+
+    const targetTitle = (title || '').slice(0, 100);
+    const targetDesc = description || '';
+
+    if (current.title === targetTitle && (current.description || '') === targetDesc) {
+      return { ok: true, matched: true };
+    }
+
+    console.log(`[Watchdog] YouTube title discrepancy detected. Updating from "${current.title}" to "${targetTitle}"`);
+    const updateRes = await fetch(`${YT_API_BASE}/liveBroadcasts?part=snippet`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: broadcastId,
+        snippet: {
+          title: targetTitle,
+          description: targetDesc,
+          scheduledStartTime: current.scheduledStartTime || new Date().toISOString(),
+        },
+      }),
+    });
+
+    if (!updateRes.ok) {
+      const updateErr = await updateRes.text();
+      return { ok: false, error: updateErr };
+    }
+
+    return { ok: true, patched: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Test validation of a YouTube channel, refresh token, and stream key.
  *
  * @param {Object} params
