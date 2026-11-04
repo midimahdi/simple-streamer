@@ -189,3 +189,36 @@ sequenceDiagram
    The native bridge binds strictly to loopback IPv4 (`127.0.0.1:45455`) and rejects external network requests.
 4. **Instant Ingestion Teardown:**
    Every Facebook broadcast is explicitly ended with `end_live_video=true` upon disconnect, preventing unauthorized RTMP re-use.
+
+---
+
+## 6. Client-Side Asset Processing & Thumbnail Pipeline
+
+To maintain broadcast quality across platforms while protecting uplink bandwidth during stream initiation, custom thumbnails undergo client-side normalization before leaving the operator's machine.
+
+```
+[Raw User Image: 5MB-25MB PNG/JPG]
+                │
+                v
+  [OBS Browser Dock (Chromium CEF)]
+  ├── HTML5 OffscreenCanvas Scaling
+  │   ├── Force 16:9 Aspect Ratio (1280 × 720 px)
+  │   └── Center-crop or blurred letterbox padding
+  ├── JPEG Compression Engine (82% quality, progressive)
+  └── Memory Output: Binary Blob (< 250 KB in ~100ms)
+                │
+                v
+     [Cloud Run Backend Proxy]
+                │
+      ┌─────────┴─────────┐
+      │                   │
+      v                   v
+[YouTube Data API]  [Facebook Graph API]   [Twitch & Kick]
+(thumbnails.set)    (/{video_id}/thumbnails)  (Bypassed: Native
+                                              video frame capture)
+```
+
+### Technical Guarantees
+1. **Zero Uplink Choke:** Compressing locally ensures stream startup packets are never delayed by a heavy 15MB graphic upload sharing the same internet connection.
+2. **Stateless Transmission:** Thumbnails pass through the Cloud Run backend ephemerally in-memory (base64 or multipart stream); no assets are written to cloud storage buckets or server disks.
+3. **Non-Fatal Resilience:** If YouTube returns `403 thumbnailNotPermitted` (due to unverified phone status on the user's channel), the error is caught safely. The live broadcast continues uninterrupted, and an informational warning is logged.

@@ -104,6 +104,7 @@ Every proposed feature has been evaluated and ranked by **Impact**, **Effort**, 
 | P1       | Pre-Filled Broadcast Templates       | High Need (Workflow) | Low    | None (Huge win)    |
 | P1       | Universal Mid-Stream Title Update    | High Need (Live Ops) | Medium | Low                |
 | P1       | Individual Secondary Stream Teardown | High Need (Control)  | Medium | Low                |
+| P1       | Universal Thumbnail Uploader (Optim.)| High Need (Visual)   | Medium | None (Dropzone)    |
 | P2       | Granular Per-Platform Metadata Edit  | Power Feature        | Medium | Contained in Adv   |
 | P2       | Stream Kickoff & Category Wizard     | Power Feature        | High   | Contained in Adv   |
 | P3       | Dedicated Analytics / Stats Window   | Nice-to-Have (Phase2)| Medium | None (Separate UI) |
@@ -187,6 +188,28 @@ To bridge the gap between non-technical mosque volunteers and advanced content c
      * Each secondary platform card displays an inline `[⏹ End]` button alongside `● LIVE`.
      * Invokes `obs_output_stop()` on that specific output and `/end-live` for that destination only.
      * Primary destination remains active to protect the main video encoder pipeline.
+   * **Effort:** Medium.
+
+4. **Universal Custom Thumbnail Uploader with Client-Side Optimization:**
+   * **Need:** Community institutions and creators announce streams with custom promotional artwork (speaker cards, Khutbah posters). Navigating to YouTube Studio and Facebook Creator Studio manually defeats the "1-click stream" promise.
+   * **Interface State (Non-Intrusive Dropzone):**
+     * An optional collapsible dropzone beneath the description field: `[🖼 Thumbnail (Optional)]`.
+     * Supports drag-and-drop or single click to browse (`PNG`, `JPG`, `WebP`).
+     * Shows a mini 16:9 thumbnail preview with a `[✕ Remove]` button.
+   * **Client-Side Image Optimization Pipeline (Zero Bandwidth Waste):**
+     * *The Problem:* Users frequently drop 10MB–25MB uncompressed DSLR camera shots or high-res Canva exports. Uploading these raw files delays stream startup and chokes upstream bandwidth during live encoding.
+     * *The Solution:* The OBS dock intercepts the file in browser memory before network transmission using HTML5 `<canvas>` / `OffscreenCanvas`:
+       1. **Automatic 16:9 Scale & Crop:** Standardizes input to standard 720p broadcast resolution (`1280 × 720 px`).
+       2. **Aspect Ratio Guard:** If non-16:9 artwork is provided (e.g. 1:1 Instagram square or 9:16 poster), it offers center-fill crop or blurred letterboxing rather than stretched distortion.
+       3. **Compression Engine:** Encodes to progressive JPEG at 82% quality, instantly crushing a 15MB source down to **< 250 KB** in under 120ms without visible degradation.
+   * **Platform Dispatch & API Routing:**
+     * **YouTube Data API v3:** Dispatches to `POST https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId={ID}`.
+       * *Account Verification Guard:* YouTube requires phone verification for custom thumbnails. If the channel is unverified, the API returns `403 thumbnailNotPermitted`. The orchestrator catches this error non-fatally, proceeds with broadcast start, and surfaces a soft warning: *"YouTube stream started; custom thumbnail skipped (channel requires phone verification in YouTube settings)."*
+     * **Facebook Graph API:** Dispatches to `POST /{video-id}/thumbnails` with `is_preferred: true` using the Page Access Token immediately after the `live_videos` container is minted.
+     * **Twitch & Kick:** Gracefully bypassed. The UI displays an info tooltip: *"Twitch and Kick automatically capture dynamic preview frames directly from your live video."*
+   * **Stateless Memory Discipline:**
+     * No files are saved to Cloud Run disk or external cloud storage buckets. The optimized binary passes ephemerally through memory directly to YouTube/Facebook APIs.
+     * Dock clears the image buffer on stream stop unless the user explicitly saved it as part of a recurring Broadcast Template.
    * **Effort:** Medium.
 
 ---
