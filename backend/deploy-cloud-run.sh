@@ -7,6 +7,7 @@ set -euo pipefail
 PROJECT_ID="${1:-$(gcloud config get-value project 2>/dev/null || echo "")}"
 REGION="${2:-europe-west1}"
 SERVICE_NAME="mosque-stream-orchestrator"
+ACCOUNT="${GCP_ACCOUNT:-midimahdi6@gmail.com}"
 
 if [ -z "$PROJECT_ID" ]; then
   echo "Error: GCP_PROJECT_ID not provided and gcloud default project not set."
@@ -22,6 +23,7 @@ echo "=================================================="
 gcloud run deploy "$SERVICE_NAME" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
+  --account="$ACCOUNT" \
   --source="." \
   --platform="managed" \
   --allow-unauthenticated \
@@ -34,4 +36,4 @@ gcloud run deploy "$SERVICE_NAME" \
 
 echo ""
 echo "Deployment Complete! Service URL:"
-gcloud run services describe "$SERVICE_NAME" --project="$PROJECT_ID" --region="$REGION" --format="value(status.url)"
+gcloud run services describe "$SERVICE_NAME" --project="$PROJECT_ID" --region="$REGION" --account="$ACCOUNT" --format="value(status.url)"
