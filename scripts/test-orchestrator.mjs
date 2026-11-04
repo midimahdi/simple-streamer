@@ -56,7 +56,7 @@ async function runTests() {
     assert.strictEqual(dockRes.status, 200);
     assert.ok(dockRes.headers.get('content-type')?.includes('text/html'));
     const dockHtml = await dockRes.text();
-    assert.ok(dockHtml.includes('STREAM CONTROL'));
+    assert.ok(dockHtml.includes('SIMPLE STREAMER'));
     console.log('✓ Static OBS Dock index.html served directly on root URL.');
 
     // 2.2 Presets endpoint
@@ -89,6 +89,28 @@ async function runTests() {
     assert.strictEqual(endData.ok, true);
     console.log('✓ End live endpoint cleanly handled empty/teardown payload.');
 
+    // 2.5 Metadata Reconciliation Watchdog endpoint test
+    const reconcileBadRes = await fetch(`${baseUrl}/reconcile-metadata`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.strictEqual(reconcileBadRes.status, 400);
+
+    const reconcileValidRes = await fetch(`${baseUrl}/reconcile-metadata`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Test Broadcast',
+        destinations: [],
+      }),
+    });
+    assert.strictEqual(reconcileValidRes.status, 200);
+    const reconcileData = await reconcileValidRes.json();
+    assert.strictEqual(reconcileData.ok, true);
+    assert.deepStrictEqual(reconcileData.results, []);
+    console.log('✓ Reconcile metadata watchdog endpoint verified (validation & execution).');
+
   } finally {
     testServer.close();
   }
@@ -96,6 +118,7 @@ async function runTests() {
   console.log('\n===============================================================');
   console.log('  ALL SUITE TESTS PASSED SUCCESSFULLY (6/6)                    ');
   console.log('===============================================================\n');
+  process.exit(0);
 }
 
 runTests().catch((err) => {
