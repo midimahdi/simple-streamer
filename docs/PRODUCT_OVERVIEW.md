@@ -105,6 +105,9 @@ Every proposed feature has been evaluated and ranked by **Impact**, **Effort**, 
 | P1       | Universal Mid-Stream Title Update    | High Need (Live Ops) | Medium | Low                |
 | P1       | Individual Secondary Stream Teardown | High Need (Control)  | Medium | Low                |
 | P1       | Universal Thumbnail Uploader (Optim.)| High Need (Visual)   | Medium | None (Dropzone)    |
+| P1       | Universal Stream-Key-Only Mode       | High Need (Fallback) | Low    | None (Segmented Tab)|
+| P1       | Custom RTMP Ingest (X, TikTok, etc.) | High Need (Expansion)| Low    | None (Generic RTMP)|
+| P2       | Instagram Live 1-Click Integration   | Platform Expansion   | Medium | Low (Existing Meta)|
 | P2       | Granular Per-Platform Metadata Edit  | Power Feature        | Medium | Contained in Adv   |
 | P2       | Stream Kickoff & Category Wizard     | Power Feature        | High   | Contained in Adv   |
 | P3       | Dedicated Analytics / Stats Window   | Nice-to-Have (Phase2)| Medium | None (Separate UI) |
@@ -211,6 +214,34 @@ To bridge the gap between non-technical mosque volunteers and advanced content c
      * No files are saved to Cloud Run disk or external cloud storage buckets. The optimized binary passes ephemerally through memory directly to YouTube/Facebook APIs.
      * Dock clears the image buffer on stream stop unless the user explicitly saved it as part of a recurring Broadcast Template.
    * **Effort:** Medium.
+
+5. **Universal Stream-Key-Only Mode (YouTube, Facebook, Twitch, Kick):**
+   * **Need:** Broadcasters who lack full Page Admin roles, encounter pending OAuth reviews, or prefer not to authenticate via web browsers can connect instantly using only their stream key.
+   * **Technical Architecture:**
+     * **YouTube:** Uses static RTMP ingest `rtmp://a.rtmp.youtube.com/live2` + persistent stream key.
+     * **Facebook Live:** Uses Facebook Persistent Stream Key (`rtmps://live-api-s.facebook.com:443/rtmp/`).
+     * **Twitch & Kick:** Uses standard static ingestion endpoints + keys.
+     * **Zero Cloud Calls:** Fully bypasses Cloud Run orchestrator and OAuth callbacks; credentials stay 100% in local OBS `localStorage`.
+   * **The Limited-Space OBS Dock UI Challenge:**
+     * *The Problem:* In a compact 320px–360px OBS dock, we must clearly signal to the user that Stream-Key-only platforms will **not** receive automatic title or description updates without wasting vertical space or creating clutter.
+     * *The UI Solution (Micro-Badges & Sync Indicators):*
+       1. **Pill Mode Glyphs:** Active destination pills display a compact glyph:
+          - `[YouTube ⚡]` (Cyan bolt = Full OAuth auto-titling).
+          - `[Facebook 🔑]` (Amber key = Direct Stream Key mode).
+       2. **Contextual Title Sub-Caption:** Beneath the Broadcast Title field, a single-line micro-caption dynamically reflects the active selection:
+          - *If all platforms are OAuth:* `● Titles auto-sync across all 3 platforms`
+          - *If mixed:* `● Auto-syncs to YouTube · ⚠️ 1 platform (Facebook) requires manual title in dashboard`
+       3. **Hover Tooltip / Popover:** Hovering the `[🔑]` glyph or disclaimer reveals a non-intrusive tooltip: *"Connected via Stream Key. The video stream is transmitted directly, but titles and descriptions must be managed on the destination dashboard."*
+   * **Effort:** Low.
+
+6. **Custom RTMP Ingest & Platform Expansion (X, TikTok, LinkedIn, Rumble):**
+   * **Need:** Allows streaming to any destination worldwide (X / Twitter, TikTok Live, LinkedIn Live, Rumble, Trovo, private mosque IPTV/RTMP relays).
+   * **Implementation:**
+     * **"Add Platform" Modal:** Includes `+ Custom RTMP` along with platform presets for X and TikTok.
+     * **Input Fields:** Target Name (e.g. *"X / Twitter"*), RTMP Server URL (`rtmp://` / `rtmps://` regex enforced), and Stream Key.
+     * **Backend & Plugin Routing:** Fed directly to `simple-streamer.plugin` (or OBS Core if primary). Reconciliation watchdog automatically sets `skipped: true` (zero quota or API overhead).
+     * **Instagram Live (OAuth):** Scheduled for Tier P2 leveraging existing Meta App infrastructure via the newly opened Instagram Live API (`POST /{ig-user-id}/live_videos`).
+   * **Effort:** Low.
 
 ---
 

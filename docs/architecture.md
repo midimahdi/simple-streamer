@@ -115,11 +115,13 @@
 * **Facebook Live:** Generates a **unique, one-time dynamic stream key** for every single live broadcast session (`status=LIVE_NOW`).
 * **OBS Stream Settings:** Historically, OBS only supported a single RTMP target in `Settings → Stream`.
 
-### The Solution: Primary / Secondary Inversion
+### The Solution: Primary / Secondary Inversion & Dual-Mode Routing
 ```
 [GO LIVE TRIGGERED]
         │
-        ├──> Backend /orchestrate-live generates keys for all enabled targets
+        ├──> Identify Connection Modes:
+        │    ├─ OAuth Targets: Minted dynamically via Cloud Run /orchestrate-live
+        │    └─ Stream Key & Custom RTMP Targets: Pre-configured static endpoints
         │
         ├──> Destination 0 (Primary Target):
         │    Injected into OBS Core via OBS WebSocket SetStreamServiceSettings:
@@ -132,7 +134,27 @@
         └──> OBS StartStream Executed:
              - OBS Core sends Primary stream.
              - Native C plugin detects stream start and mirrors encoded packets
-               to Destinations 1..N simultaneously.
+               to Destinations 1..N simultaneously (Zero extra encoding CPU).
+```
+
+### Destination Data Model
+```typescript
+interface StreamDestination {
+  id: string;
+  platform: 'youtube' | 'facebook' | 'twitch' | 'kick' | 'instagram' | 'custom';
+  name: string;
+  connectionMode: 'oauth' | 'stream_key' | 'custom_rtmp';
+  enabled: boolean;
+  serverUrl: string;
+  streamKey: string;
+  credentials?: {
+    accessToken?: string;
+    refreshToken?: string;
+    userToken?: string;
+    pageId?: string;
+  };
+  metadataSyncSupported: boolean; // true for OAuth, false for stream_key/custom
+}
 ```
 
 ---
