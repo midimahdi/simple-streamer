@@ -1,0 +1,46 @@
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Cloudflare & Build Caches
+.wrangler/
+.turbo/
+.cache/
+
+# OS Specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Native Plugin Build Outputs
+plugin/build/
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.plugin
+
+# Installer Binaries & Bundles
+installer/macos/dist/
+installer/macos/bin/simple-streamer-bridge
+installer/windows/Output/
+*.dmg
+*.exe
+*.zip
+*.tar.gz
+
+# IDE & Editor Configs
+.vscode/
+.idea/
+*.swp
+*.swo

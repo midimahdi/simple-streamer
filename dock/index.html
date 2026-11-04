@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mosque Stream Orchestrator</title>
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="stylesheet" href="./style.css?v=20261103_15" />
+</head>
+<body>
+  <div class="top-section">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <img src="./icon.svg" alt="App Icon" class="brand-icon" />
+        <div class="brand-text">
+          <span id="brandTitle" class="brand-title">SIMPLE STREAMER</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="toggleDiagBtn" class="icon-btn" title="Platform Settings & Connections" aria-label="Toggle Settings">⚙</button>
+      </div>
+    </header>
+
+    <!-- Error / Alert Banner -->
+    <div id="alertBox" class="alert-box">
+      <div id="alertTitle" class="alert-title">ALERT</div>
+      <div id="alertMsg" class="alert-msg"></div>
+      <div id="alertActions" class="alert-actions"></div>
+    </div>
+
+    <!-- Active Broadcast Container -->
+    <div id="liveContainer" class="live-container">
+      <div id="liveHeader" class="live-header">● BROADCASTING LIVE</div>
+      <div id="liveTimer" class="timer">00:00:00</div>
+
+      <!-- Real-Time Platform Status Cards (Dynamically populated) -->
+      <div id="platformLiveGrid" class="platform-live-grid"></div>
+
+      <div class="metrics-row">
+        <div class="metric-item">
+          <span class="metric-label">BITRATE</span>
+          <span id="metricBitrate" class="metric-val">0 kbps</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">FPS</span>
+          <span id="metricFps" class="metric-val">0</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">DROPPED</span>
+          <span id="metricDropped" class="metric-val">0 (0%)</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">STATUS</span>
+          <span id="metricRecord" class="metric-val" style="color: #34d399;">ONLINE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Operational Input Group -->
+    <div id="inputGroup">
+      <div class="control-group">
+        <label for="lessonTitle">Title</label>
+        <input
+          type="text"
+          id="lessonTitle"
+          placeholder="Add a title to your video"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+
+      <div class="control-group">
+        <label for="lessonDescription">Description</label>
+        <textarea
+          id="lessonDescription"
+          rows="3"
+          placeholder="Tell viewers about your video"
+          autocomplete="off"
+          spellcheck="false"
+        ></textarea>
+      </div>
+
+      <!-- Active Destinations Toolbar -->
+      <div class="destinations-toolbar">
+        <div class="destinations-toolbar-header">
+          <span class="destinations-toolbar-title">BROADCAST TARGETS</span>
+        </div>
+        <div id="destinationsPills" class="destinations-pills"></div>
+      </div>
+    </div>
+
+    <!-- Built-in Platform Setup & Settings Drawer -->
+    <div id="diagPanel" class="diagnostics-panel">
+      <div class="diag-header-row">
+        <div>
+          <div class="diag-title">STREAM DESTINATIONS</div>
+        </div>
+      </div>
+
+      <!-- Discovery & Confirmation Modal Card -->
+      <div id="discoveryCard" class="discovery-card" style="display: none;">
+        <div class="discovery-card-header">
+          <span id="discoveryTitle" class="discovery-card-title">Confirm Destination</span>
+          <button type="button" id="btnCloseDiscovery" class="close-btn" aria-label="Close">✕</button>
+        </div>
+        <div id="discoveryBody" class="discovery-card-body"></div>
+        <div class="discovery-card-actions">
+          <button type="button" id="btnConfirmDiscovery" class="btn-confirm">✓ Confirm & Add</button>
+          <button type="button" id="btnCancelDiscovery" class="btn-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Single Add Platform Button & Expandable Grid -->
+      <div style="margin-bottom: 12px;">
+        <button type="button" id="btnToggleAddPlatforms" class="btn-primary" style="background: #2563eb; font-size: 11px; padding: 9px 12px;">
+          + Add Platform
+        </button>
+      </div>
+
+      <div id="addPlatformsGrid" class="add-buttons-grid" style="display: none;">
+        <button type="button" id="btnAddYt" class="btn-add yt">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          <span>YouTube</span>
+        </button>
+        <button type="button" id="btnAddFb" class="btn-add fb">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          <span>Facebook</span>
+        </button>
+        <button type="button" id="btnAddTwitch" class="btn-add twitch">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.149 0l-1.612 4.119v16.8h5.9v3.081h3.081l3.08-3.081h4.632l6.219-6.219V0H2.149zm19.231 13.638l-3.693 3.693h-5.228l-3.081 3.081v-3.081H4.632V2.149h16.748v11.489zm-4.632-6.529h-2.149v5.901h2.149V7.109zm-5.9 0H8.699v5.901h2.149V7.109z"/></svg>
+          <span>Twitch</span>
+        </button>
+        <button type="button" id="btnAddKick" class="btn-add kick">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M1.333 0h7.62v7.619h3.809V3.81h3.81V0h7.618v11.429h-3.81v3.809h3.81V24h-7.619v-3.81h-3.81v-3.809H8.952V24H1.333V0z"/></svg>
+          <span>Kick</span>
+        </button>
+      </div>
+
+      <!-- Configured Destinations List -->
+      <div class="destinations-list-container">
+        <div id="destinationsList" class="destinations-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Action Button -->
+  <div class="action-container">
+    <button id="actionBtn" class="btn-primary">
+      <span id="actionBtnText">▶ START BROADCAST</span>
+    </button>
+  </div>
+
+  <script type="module" src="./app.js?v=20261103_15"></script>
+</body>
+</html>

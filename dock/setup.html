@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Setup Wizard — Simple Streamer</title>
+  <style>
+    :root {
+      --bg: #090a0f;
+      --card-bg: #12141c;
+      --border: #232734;
+      --text: #f0f2f5;
+      --muted: #9aa0a6;
+      --accent: #ffffff;
+      --green: #10b981;
+      --red: #ef4444;
+      --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 40px 20px; line-height: 1.5; }
+    .container { max-width: 680px; margin: 0 auto; }
+    header { border-bottom: 2px solid #fff; padding-bottom: 16px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center; }
+    .title { font-size: 18px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+    .subtitle { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin-bottom: 24px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .card-title { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+    .badge { font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge.connected { background: #064e3b; color: #34d399; border: 1px solid var(--green); }
+    .badge.missing { background: #450a0a; color: #f87171; border: 1px solid var(--red); }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; }
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      background: #000;
+      color: #fff;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font-size: 13px;
+      border-radius: 4px;
+      outline: none;
+      font-family: var(--font-mono);
+    }
+    input:focus, select:focus { border-color: #fff; }
+    .btn {
+      background: #fff;
+      color: #000;
+      border: none;
+      padding: 12px 20px;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn:hover { background: #e5e7eb; }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn-secondary { background: transparent; color: #fff; border: 1px solid var(--border); }
+    .btn-secondary:hover { background: #1e222f; }
+    .status-msg { margin-top: 10px; font-size: 12px; padding: 8px 12px; border-radius: 4px; display: none; }
+    .status-msg.success { background: #064e3b; color: #a7f3d0; border: 1px solid var(--green); }
+    .status-msg.error { background: #450a0a; color: #fca5a5; border: 1px solid var(--red); }
+    .footer-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <div class="title">Simple Streamer Setup</div>
+        <div class="subtitle">Platform Connections & OBS Config</div>
+      </div>
+      <div>
+        <a href="/" class="btn btn-secondary" style="font-size: 11px; padding: 8px 14px;">Open Dock →</a>
+      </div>
+    </header>
+
+    <!-- STEP 1: YOUTUBE -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">1. YouTube Connection</div>
+        <span id="ytBadge" class="badge missing">Not Connected</span>
+      </div>
+      <div class="form-group">
+        <label>Google Client ID</label>
+        <input type="text" id="ytClientId" placeholder="e.g. 12345-xxx.apps.googleusercontent.com" />
+      </div>
+      <div class="form-group">
+        <label>Google Client Secret</label>
+        <input type="password" id="ytClientSecret" placeholder="GOCSPX-xxxxxxxxxxxx" />
+      </div>
+
+      <div id="ytStreamGroup" class="form-group" style="display: none;">
+        <label>Select Permanent Stream Ingestion</label>
+        <select id="ytStreamSelect">
+          <option value="">Loading streams...</option>
+        </select>
+        <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">
+          This stream key will be assigned to YouTube in OBS <code>obs-multi-rtmp</code>.
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button id="btnConnectYt" class="btn">Connect YouTube Channel</button>
+        <button id="btnSaveYtStream" class="btn btn-secondary" style="display: none;">Save Stream Selection</button>
+      </div>
+      <div id="ytStatus" class="status-msg"></div>
+    </div>
+
+    <!-- STEP 2: FACEBOOK -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">2. Facebook Live Connection</div>
+        <span id="fbBadge" class="badge missing">Not Connected</span>
+      </div>
+      <div class="form-group">
+        <label>Facebook Page ID</label>
+        <input type="text" id="fbPageId" placeholder="e.g. 102938475610293" />
+      </div>
+      <div class="form-group">
+        <label>Facebook Page / System User Access Token</label>
+        <input type="password" id="fbToken" placeholder="Never-expiring System User Token or Page Token" />
+      </div>
+      <div>
+        <button id="btnVerifyFb" class="btn">Verify & Save Facebook</button>
+      </div>
+      <div id="fbStatus" class="status-msg"></div>
+    </div>
+
+    <!-- STEP 3: MOSQUE INFO -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">3. Mosque & Broadcast Settings</div>
+      </div>
+      <div class="form-group">
+        <label>Mosque / Channel Name</label>
+        <input type="text" id="mosqueName" placeholder="e.g. Masjid Al-Noor" />
+      </div>
+      <div class="form-group">
+        <label>Default YouTube Privacy Status</label>
+        <select id="ytPrivacy">
+          <option value="public">Public (Default)</option>
+          <option value="unlisted">Unlisted (For testing / private)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Donation / Support Link (Optional)</label>
+        <input type="text" id="mosqueDonation" placeholder="https://..." />
+      </div>
+      <div>
+        <button id="btnSaveAll" class="btn">Save Mosque Settings</button>
+      </div>
+      <div id="saveStatus" class="status-msg"></div>
+    </div>
+
+    <div class="footer-actions">
+      <div style="font-size: 11px; color: var(--muted);">
+        All credentials are saved locally in <code>backend/.env</code> and never sent externally.
+      </div>
+      <a href="/" class="btn">Go To OBS Stream Dock →</a>
+    </div>
+  </div>
+
+  <script>
+    const el = {
+      ytClientId: document.getElementById('ytClientId'),
+      ytClientSecret: document.getElementById('ytClientSecret'),
+      ytStreamGroup: document.getElementById('ytStreamGroup'),
+      ytStreamSelect: document.getElementById('ytStreamSelect'),
+      btnConnectYt: document.getElementById('btnConnectYt'),
+      btnSaveYtStream: document.getElementById('btnSaveYtStream'),
+      ytBadge: document.getElementById('ytBadge'),
+      ytStatus: document.getElementById('ytStatus'),
+
+      fbPageId: document.getElementById('fbPageId'),
+      fbToken: document.getElementById('fbToken'),
+      btnVerifyFb: document.getElementById('btnVerifyFb'),
+      fbBadge: document.getElementById('fbBadge'),
+      fbStatus: document.getElementById('fbStatus'),
+
+      mosqueName: document.getElementById('mosqueName'),
+      ytPrivacy: document.getElementById('ytPrivacy'),
+      mosqueDonation: document.getElementById('mosqueDonation'),
+      btnSaveAll: document.getElementById('btnSaveAll'),
+      saveStatus: document.getElementById('saveStatus'),
+    };
+
+    // Auto-save form inputs to localStorage on every stroke
+    ['ytClientId', 'ytClientSecret', 'fbPageId', 'fbToken', 'mosqueName', 'mosqueDonation'].forEach(id => {
+      const input = document.getElementById(id);
+      const saved = localStorage.getItem('wizard_' + id);
+      if (saved) input.value = saved;
+      input.addEventListener('input', () => {
+        localStorage.setItem('wizard_' + id, input.value.trim());
+      });
+    });
+
+    // Load existing backend config
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/config');
+        if (!res.ok) return;
+        const cfg = await res.json();
+
+        if (cfg.YOUTUBE_CLIENT_ID && !el.ytClientId.value) el.ytClientId.value = cfg.YOUTUBE_CLIENT_ID;
+        if (cfg.YOUTUBE_CLIENT_SECRET && !el.ytClientSecret.value) el.ytClientSecret.value = cfg.YOUTUBE_CLIENT_SECRET;
+        if (cfg.FACEBOOK_PAGE_ID && !el.fbPageId.value) el.fbPageId.value = cfg.FACEBOOK_PAGE_ID;
+        if (cfg.MOSQUE_NAME && !el.mosqueName.value) el.mosqueName.value = cfg.MOSQUE_NAME;
+        if (cfg.YOUTUBE_PRIVACY_STATUS) el.ytPrivacy.value = cfg.YOUTUBE_PRIVACY_STATUS;
+        if (cfg.MOSQUE_DONATION_URL && !el.mosqueDonation.value) el.mosqueDonation.value = cfg.MOSQUE_DONATION_URL;
+
+        if (cfg.YOUTUBE_REFRESH_TOKEN) {
+          el.ytBadge.textContent = 'Connected';
+          el.ytBadge.className = 'badge connected';
+          loadYouTubeStreams();
+        }
+
+        if (cfg.FACEBOOK_PAGE_ID && cfg.FACEBOOK_ACCESS_TOKEN) {
+          el.fbBadge.textContent = 'Configured';
+          el.fbBadge.className = 'badge connected';
+        }
+      } catch (_) {}
+    }
+
+    // Connect YouTube Button
+    el.btnConnectYt.onclick = async () => {
+      const clientId = el.ytClientId.value.trim();
+      const clientSecret = el.ytClientSecret.value.trim();
+
+      if (!clientId || !clientSecret) {
+        showMsg(el.ytStatus, 'Please enter Google Client ID and Client Secret first.', false);
+        return;
+      }
+
+      // Save credentials first
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ YOUTUBE_CLIENT_ID: clientId, YOUTUBE_CLIENT_SECRET: clientSecret }),
+      });
+
+      // Redirect to Google OAuth initiation
+      window.location.href = `/auth/youtube/start?client_id=${encodeURIComponent(clientId)}`;
+    };
+
+    // Load available streams for dropdown
+    async function loadYouTubeStreams() {
+      try {
+        const res = await fetch('/api/youtube-streams');
+        const data = await res.json();
+        if (data.streams && data.streams.length > 0) {
+          el.ytStreamGroup.style.display = 'block';
+          el.btnSaveYtStream.style.display = 'inline-flex';
+          el.ytStreamSelect.innerHTML = '';
+          data.streams.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = `${s.title} (${s.resolution}) - ID: ${s.id}`;
+            if (s.id === data.selectedStreamId) opt.selected = true;
+            el.ytStreamSelect.appendChild(opt);
+          });
+        }
+      } catch (_) {}
+    }
+
+    // Save Stream Selection
+    el.btnSaveYtStream.onclick = async () => {
+      const streamId = el.ytStreamSelect.value;
+      if (!streamId) return;
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ YOUTUBE_STREAM_ID: streamId }),
+      });
+      showMsg(el.ytStatus, '✓ Stream ingestion ID saved!', true);
+    };
+
+    // Verify Facebook Page Button
+    el.btnVerifyFb.onclick = async () => {
+      const pageId = el.fbPageId.value.trim();
+      const token = el.fbToken.value.trim();
+
+      if (!pageId || !token) {
+        showMsg(el.fbStatus, 'Please enter both Page ID and Access Token.', false);
+        return;
+      }
+
+      showMsg(el.fbStatus, 'Verifying with Facebook Graph API...', true);
+      try {
+        const res = await fetch('/api/verify-facebook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageId, token }),
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          el.fbBadge.textContent = 'Connected: ' + data.name;
+          el.fbBadge.className = 'badge connected';
+          showMsg(el.fbStatus, `✓ Connected to Facebook Page: "${data.name}"!`, true);
+        } else {
+          showMsg(el.fbStatus, data.error || 'Verification failed', false);
+        }
+      } catch (err) {
+        showMsg(el.fbStatus, err.message, false);
+      }
+    };
+
+    // Save Mosque Details
+    el.btnSaveAll.onclick = async () => {
+      const updates = {
+        MOSQUE_NAME: el.mosqueName.value.trim(),
+        YOUTUBE_PRIVACY_STATUS: el.ytPrivacy.value,
+        MOSQUE_DONATION_URL: el.mosqueDonation.value.trim(),
+      };
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (res.ok) {
+        showMsg(el.saveStatus, '✓ Mosque settings saved successfully!', true);
+      }
+    };
+
+    function showMsg(elem, text, isSuccess) {
+      elem.textContent = text;
+      elem.className = 'status-msg ' + (isSuccess ? 'success' : 'error');
+      elem.style.display = 'block';
+    }
+
+    // Check URL params for callback status
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('youtube') === 'connected') {
+      showMsg(el.ytStatus, '✓ Successfully authorized YouTube Channel!', true);
+      history.replaceState(null, '', '/setup');
+    } else if (params.get('error')) {
+      showMsg(el.ytStatus, 'Error: ' + params.get('error'), false);
+    }
+
+    loadConfig();
+  </script>
+</body>
+</html>
