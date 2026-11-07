@@ -1,8 +1,12 @@
 @echo off
-:: ==============================================================================
-:: Simple Streamer — 1-Click Double-Click Installer for Windows
-:: ==============================================================================
+setlocal
+chcp 65001 >nul 2>&1
 title Simple Streamer Installer
+echo ==========================================================
+echo     Simple Streamer - Windows Installer
+echo ==========================================================
+echo.
 echo Running Simple Streamer Setup...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"
+echo.
 pause

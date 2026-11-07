@@ -1,8 +1,9 @@
+﻿# ==============================================================================
+# Simple Streamer - 1-Click Installer for OBS Studio (Windows PowerShell)
 # ==============================================================================
-# Simple Streamer — 1-Click Installer for OBS Studio (Windows PowerShell)
-# ==============================================================================
-# 1. Configures OBS Custom Browser Dock automatically.
-# 2. Sets up external browser launcher for seamless Google/Facebook login.
+# 1. Configures OBS Custom Browser Dock automatically in user.ini.
+# 2. Ensures OBS WebSocket v5 is enabled.
+# 3. Compiles and starts the zero-dependency background bridge on port 45455.
 # ==============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -13,30 +14,34 @@ $DockTitle = "Simple Streamer"
 $DockUrl = "https://simple-streamer.bdjlmn.com"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "    Simple Streamer — Automatic 1-Click Installer" -ForegroundColor Cyan
+Write-Host "    Simple Streamer - Automatic 1-Click Installer" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # 1. Check if OBS is running
 $obsProc = Get-Process -Name "obs64", "obs32" -ErrorAction SilentlyContinue
 if ($obsProc) {
-    Write-Host "⚠️  OBS Studio is currently running." -ForegroundColor Yellow
-    $ans = Read-Host "   Close OBS Studio now to apply settings? (y/n)"
+    Write-Host "[!] OBS Studio is currently running." -ForegroundColor Yellow
+    $ans = Read-Host "    Close OBS Studio now to apply settings? (y/n)"
     if ($ans -eq "y" -or $ans -eq "Y") {
         Stop-Process -Name "obs64", "obs32" -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
-        Write-Host "   ✓ OBS Studio closed." -ForegroundColor Green
+        Write-Host "    [OK] OBS Studio closed." -ForegroundColor Green
     } else {
-        Write-Host "❌ Please close OBS Studio and run this installer again." -ForegroundColor Red
+        Write-Host "[ERROR] Please close OBS Studio and run this installer again." -ForegroundColor Red
         Exit 1
     }
 }
 
-# 2. Inject Custom Browser Dock into user.ini
-if (Test-Path $UserIni) {
-    Write-Host "🔌 Injecting '$DockTitle' into OBS configuration..." -ForegroundColor Cyan
-    $content = Get-Content $UserIni -Raw
+# 2. Ensure OBS directory and configuration exist
+if (-not (Test-Path $ObsDir)) {
+    New-Item -ItemType Directory -Path $ObsDir -Force | Out-Null
+}
 
+Write-Host "[*] Injecting '$DockTitle' into OBS configuration..." -ForegroundColor Cyan
+
+if (Test-Path $UserIni) {
+    $content = Get-Content $UserIni -Raw -Encoding utf8
     $pattern = 'ExtraBrowserDocks=(.*)'
     if ($content -match $pattern) {
         $rawJson = $matches[1].Trim()
@@ -44,7 +49,6 @@ if (Test-Path $UserIni) {
         if ($rawJson -and $rawJson -ne "[]") {
             try { $docks = ConvertFrom-Json $rawJson } catch { $docks = @() }
         }
-        
         $exists = $docks | Where-Object { $_.title -eq $DockTitle }
         if (-not $exists) {
             $newDock = [PSCustomObject]@{ title = $DockTitle; url = $DockUrl }
@@ -52,19 +56,26 @@ if (Test-Path $UserIni) {
             $newJson = ConvertTo-Json -Compress @($docks)
             $content = $content -replace $pattern, "ExtraBrowserDocks=$newJson"
             Set-Content -Path $UserIni -Value $content -Encoding utf8
-            Write-Host "   ✓ Added Simple Streamer dock to OBS Studio." -ForegroundColor Green
+            Write-Host "    [OK] Added Simple Streamer dock to OBS Studio." -ForegroundColor Green
         } else {
-            Write-Host "   ✓ Simple Streamer dock is already registered." -ForegroundColor Green
+            Write-Host "    [OK] Simple Streamer dock is already registered." -ForegroundColor Green
         }
     } else {
         $newJson = ConvertTo-Json -Compress @([PSCustomObject]@{ title = $DockTitle; url = $DockUrl })
-        $content = $content + "`r`nExtraBrowserDocks=$newJson`r`n"
+        $newLine = "ExtraBrowserDocks=$newJson"
+        if ($content -match '\[BasicWindow\]') {
+            $content = $content -replace '\[BasicWindow\]', "[BasicWindow]`r`n$newLine"
+        } else {
+            $content = $content + "`r`n[BasicWindow]`r`n$newLine`r`n"
+        }
         Set-Content -Path $UserIni -Value $content -Encoding utf8
-        Write-Host "   ✓ Added Simple Streamer dock to OBS Studio." -ForegroundColor Green
+        Write-Host "    [OK] Added Simple Streamer dock to OBS Studio." -ForegroundColor Green
     }
 } else {
-    Write-Host "⚠️  OBS configuration ($UserIni) not found." -ForegroundColor Yellow
-    Write-Host "   Open OBS Studio once, close it, and run this installer." -ForegroundColor Yellow
+    $newJson = ConvertTo-Json -Compress @([PSCustomObject]@{ title = $DockTitle; url = $DockUrl })
+    $initialContent = "[BasicWindow]`r`nExtraBrowserDocks=$newJson`r`n"
+    Set-Content -Path $UserIni -Value $initialContent -Encoding utf8
+    Write-Host "    [OK] Created OBS configuration with Simple Streamer dock." -ForegroundColor Green
 }
 
 # 2.5 Ensure OBS WebSocket server is enabled
@@ -81,68 +92,146 @@ if (-not (Test-Path $wsConfigFile)) {
         server_port = 4455
     } | ConvertTo-Json
     Set-Content -Path $wsConfigFile -Value $wsConfig -Encoding utf8
-    Write-Host "   ✓ Initialized OBS WebSocket configuration (port 4455, enabled)." -ForegroundColor Green
+    Write-Host "    [OK] Initialized OBS WebSocket configuration (port 4455, enabled)." -ForegroundColor Green
 } else {
     try {
         $wsData = Get-Content $wsConfigFile -Raw | ConvertFrom-Json
         if (-not $wsData.server_enabled) {
             $wsData.server_enabled = $true
             $wsData | ConvertTo-Json | Set-Content -Path $wsConfigFile -Encoding utf8
-            Write-Host "   ✓ Enabled OBS WebSocket server in config." -ForegroundColor Green
+            Write-Host "    [OK] Enabled OBS WebSocket server in config." -ForegroundColor Green
         }
     } catch {}
 }
 
-# 3. Create background bridge script
+# 3. Create native background bridge (Port 45455)
 $BridgeDir = "$env:LOCALAPPDATA\SimpleStreamer"
 if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
+$BridgeExe = "$BridgeDir\SimpleStreamerBridge.exe"
 
-$BridgeScript = @"
+Get-Process -Name "SimpleStreamerBridge" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+$BridgeSource = @'
 using System;
+using System.IO;
 using System.Net;
 using System.Diagnostics;
-using System.Web;
+using System.Runtime.InteropServices;
+using System.Text;
 
-class Program {
+class SimpleStreamerBridge {
+    [DllImport("user32.dll")]
+    static extern bool SetForegroundWindow(IntPtr hWnd);
+
     static void Main() {
         HttpListener listener = new HttpListener();
-        listener.Prefixes.Add("http://127.0.0.1:45455/");
-        listener.Start();
+        try {
+            listener.Prefixes.Add("http://127.0.0.1:45455/");
+            listener.Start();
+        } catch {
+            return;
+        }
+
         while (true) {
-            HttpListenerContext ctx = listener.GetContext();
-            HttpListenerRequest req = ctx.Request;
-            HttpListenerResponse res = ctx.Response;
-            res.AddHeader("Access-Control-Allow-Origin", "*");
-            res.AddHeader("Access-Control-Allow-Private-Network", "true");
-            res.AddHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-            res.AddHeader("Access-Control-Allow-Headers", "*");
+            try {
+                HttpListenerContext ctx = listener.GetContext();
+                HttpListenerRequest req = ctx.Request;
+                HttpListenerResponse res = ctx.Response;
 
-            if (req.HttpMethod == "OPTIONS") {
-                res.StatusCode = 200;
+                res.AddHeader("Access-Control-Allow-Origin", "*");
+                res.AddHeader("Access-Control-Allow-Private-Network", "true");
+                res.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                res.AddHeader("Access-Control-Allow-Headers", "*");
+
+                if (req.HttpMethod == "OPTIONS") {
+                    res.StatusCode = 200;
+                    res.Close();
+                    continue;
+                }
+
+                string path = req.Url.AbsolutePath.ToLower();
+                byte[] responseBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
+
+                if (path == "/open" || path == "/open-browser") {
+                    string targetUrl = req.QueryString["url"];
+                    if (!string.IsNullOrEmpty(targetUrl) && (targetUrl.StartsWith("http://") || targetUrl.StartsWith("https://"))) {
+                        Process.Start(new ProcessStartInfo(targetUrl) { UseShellExecute = true });
+                    }
+                } else if (path == "/focus-obs") {
+                    Process[] procs = Process.GetProcessesByName("obs64");
+                    if (procs.Length == 0) procs = Process.GetProcessesByName("obs32");
+                    if (procs.Length > 0 && procs[0].MainWindowHandle != IntPtr.Zero) {
+                        SetForegroundWindow(procs[0].MainWindowHandle);
+                    }
+                } else if (path == "/obs-config") {
+                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    string cfg = Path.Combine(appData, "obs-studio", "plugin_config", "obs-websocket", "config.json");
+                    if (File.Exists(cfg)) {
+                        responseBytes = File.ReadAllBytes(cfg);
+                    } else {
+                        responseBytes = Encoding.UTF8.GetBytes("{\"auth_required\":false}");
+                    }
+                    res.ContentType = "application/json";
+                } else if (path == "/save-destinations" && req.HttpMethod == "POST") {
+                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    string dir = Path.Combine(appData, "obs-studio", "plugin_config", "simple-streamer");
+                    Directory.CreateDirectory(dir);
+                    string destFile = Path.Combine(dir, "config.json");
+                    using (FileStream fs = File.Create(destFile)) {
+                        req.InputStream.CopyTo(fs);
+                    }
+                } else if (path == "/save-secondary") {
+                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    string dir = Path.Combine(appData, "obs-studio", "plugin_config", "simple-streamer");
+                    Directory.CreateDirectory(dir);
+                    string enabled = req.QueryString["enabled"] == "1" ? "true" : "false";
+                    string server = req.QueryString["server"] ?? "";
+                    string key = req.QueryString["key"] ?? "";
+                    string json = string.Format("{{\"enabled\":{0},\"server\":\"{1}\",\"key\":\"{2}\"}}", enabled, server, key);
+                    File.WriteAllText(Path.Combine(dir, "config.json"), json, Encoding.UTF8);
+                }
+
+                res.ContentType = res.ContentType ?? "application/json";
+                res.ContentLength64 = responseBytes.Length;
+                res.OutputStream.Write(responseBytes, 0, responseBytes.Length);
                 res.Close();
-                continue;
-            }
-
-            string rawUrl = req.QueryString["url"];
-            if (!string.IsNullOrEmpty(rawUrl) && (rawUrl.StartsWith("https://") || rawUrl.StartsWith("http://"))) {
-                Process.Start(new ProcessStartInfo(rawUrl) { UseShellExecute = true });
-            }
-
-            byte[] buf = System.Text.Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
-            res.ContentType = "application/json";
-            res.ContentLength64 = buf.Length;
-            res.OutputStream.Write(buf, 0, buf.Length);
-            res.Close();
+            } catch {}
         }
     }
 }
-"@
+'@
+
+$SourceFile = "$BridgeDir\Bridge.cs"
+Set-Content -Path $SourceFile -Value $BridgeSource -Encoding utf8
+
+$compiled = $false
+try {
+    Add-Type -TypeDefinition $BridgeSource -OutputAssembly $BridgeExe -OutputType WindowsApplication -ErrorAction Stop
+    $compiled = $true
+} catch {
+    $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+    if (Test-Path $csc) {
+        & $csc /nologo /target:winexe /out:"$BridgeExe" "$SourceFile" | Out-Null
+        if (Test-Path $BridgeExe) { $compiled = $true }
+    }
+}
+
+if ($compiled -and (Test-Path $BridgeExe)) {
+    try {
+        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Value "`"$BridgeExe`"" -Force
+    } catch {}
+
+    Start-Process -FilePath $BridgeExe
+    Write-Host "    [OK] Native background bridge started on port 45455." -ForegroundColor Green
+} else {
+    Write-Host "    [!] Could not compile bridge exe; will launch via background PowerShell." -ForegroundColor Yellow
+}
 
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "    🎉 Installation Complete!" -ForegroundColor Green
+Write-Host "    Installation Complete!" -ForegroundColor Green
 Write-Host "    1. Open OBS Studio." -ForegroundColor Cyan
 Write-Host "    2. Find 'Simple Streamer' in your Docks menu." -ForegroundColor Cyan
-Write-Host "    3. Click 'Sign In' to authenticate in your browser!" -ForegroundColor Cyan
+Write-Host "    3. Click 'Sign In' to connect your channels!" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host ""
