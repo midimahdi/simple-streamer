@@ -1,24 +1,11 @@
 @echo off
-setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title Simple Streamer Installer
 echo ==========================================================
 echo     Simple Streamer - Windows Installer
 echo ==========================================================
 echo.
-
-set "PS1_FILE=%~dp0install.ps1"
-if not exist "!PS1_FILE!" (
-    set "PS1_FILE=%~dp0windows\install.ps1"
-)
-
-if exist "!PS1_FILE!" (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "!PS1_FILE!"
-) else (
-    echo Running standalone embedded installer...
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p='%~f0'; $raw=[System.IO.File]::ReadAllText($p,[System.Text.Encoding]::UTF8); $idx=$raw.IndexOf('___EMBEDDED_PS_SCRIPT___'); if ($idx -ge 0) { Invoke-Expression $raw.Substring($idx + 26) }"
-)
-
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& { param($p) $raw=[System.IO.File]::ReadAllText($p,[System.Text.Encoding]::UTF8); $marker='___EMBEDDED_PS_SCRIPT___'; $idx=$raw.IndexOf($marker); if ($idx -ge 0) { $code=$raw.Substring($idx + $marker.Length); Invoke-Expression $code } else { Write-Error 'Installer payload missing' } }" "%~f0"
 echo.
 pause
 exit /b
@@ -48,8 +35,8 @@ Write-Host ""
 $obsProc = Get-Process -Name "obs64", "obs32" -ErrorAction SilentlyContinue
 if ($obsProc) {
     Write-Host "[!] OBS Studio is currently running." -ForegroundColor Yellow
-    $ans = Read-Host "    Close OBS Studio now to apply settings? (y/n)"
-    if ($ans -eq "y" -or $ans -eq "Y") {
+    $ans = Read-Host "    Close OBS Studio now to apply settings? [Y/n]"
+    if ([string]::IsNullOrWhiteSpace($ans) -or $ans -eq "y" -or $ans -eq "Y" -or $ans -eq "o" -or $ans -eq "O") {
         Stop-Process -Name "obs64", "obs32" -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
         Write-Host "    [OK] OBS Studio closed." -ForegroundColor Green
@@ -64,7 +51,7 @@ if (-not (Test-Path $ObsDir)) {
     New-Item -ItemType Directory -Path $ObsDir -Force | Out-Null
 }
 
-Write-Host "[*] Injecting '$DockTitle' into OBS configuration..." -ForegroundColor Cyan
+Write-Host "[*] Configuring OBS Custom Browser Dock..." -ForegroundColor Cyan
 
 if (Test-Path $UserIni) {
     $content = Get-Content $UserIni -Raw -Encoding utf8
@@ -75,17 +62,16 @@ if (Test-Path $UserIni) {
         if ($rawJson -and $rawJson -ne "[]") {
             try { $docks = ConvertFrom-Json $rawJson } catch { $docks = @() }
         }
-        $exists = $docks | Where-Object { $_.title -eq $DockTitle }
-        if (-not $exists) {
-            $newDock = [PSCustomObject]@{ title = $DockTitle; url = $DockUrl }
-            $docks += $newDock
-            $newJson = ConvertTo-Json -Compress @($docks)
-            $content = $content -replace $pattern, "ExtraBrowserDocks=$newJson"
-            Set-Content -Path $UserIni -Value $content -Encoding utf8
-            Write-Host "    [OK] Added Simple Streamer dock to OBS Studio." -ForegroundColor Green
+        $existing = $docks | Where-Object { $_.title -eq $DockTitle }
+        if ($existing) {
+            $existing.url = $DockUrl
         } else {
-            Write-Host "    [OK] Simple Streamer dock is already registered." -ForegroundColor Green
+            $docks += [PSCustomObject]@{ title = $DockTitle; url = $DockUrl }
         }
+        $newJson = ConvertTo-Json -Compress @($docks)
+        $content = $content.Replace($matches[0], "ExtraBrowserDocks=$newJson")
+        Set-Content -Path $UserIni -Value $content -Encoding utf8
+        Write-Host "    [OK] Simple Streamer dock configured in OBS Studio." -ForegroundColor Green
     } else {
         $newJson = ConvertTo-Json -Compress @([PSCustomObject]@{ title = $DockTitle; url = $DockUrl })
         $newLine = "ExtraBrowserDocks=$newJson"
@@ -101,7 +87,7 @@ if (Test-Path $UserIni) {
     $newJson = ConvertTo-Json -Compress @([PSCustomObject]@{ title = $DockTitle; url = $DockUrl })
     $initialContent = "[BasicWindow]`r`nExtraBrowserDocks=$newJson`r`n"
     Set-Content -Path $UserIni -Value $initialContent -Encoding utf8
-    Write-Host "    [OK] Created OBS configuration with Simple Streamer dock." -ForegroundColor Green
+    Write-Host "    [OK] Initialized OBS configuration with Simple Streamer dock." -ForegroundColor Green
 }
 
 # 2.5 Ensure OBS WebSocket server is enabled
@@ -134,8 +120,12 @@ if (-not (Test-Path $wsConfigFile)) {
 $BridgeDir = "$env:LOCALAPPDATA\SimpleStreamer"
 if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
 $BridgeExe = "$BridgeDir\SimpleStreamerBridge.exe"
+$SourceFile = "$BridgeDir\Bridge.cs"
+$PsBridgeFile = "$BridgeDir\bridge.ps1"
 
+# Stop existing bridge if running
 Get-Process -Name "SimpleStreamerBridge" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 
 $BridgeSource = @'
 using System;
@@ -176,7 +166,7 @@ class SimpleStreamerBridge {
                 }
 
                 string path = req.Url.AbsolutePath.ToLower();
-                byte[] responseBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
+                byte[] responseBytes = Encoding.UTF8.GetBytes("{"status":"ok"}");
 
                 if (path == "/open" || path == "/open-browser") {
                     string targetUrl = req.QueryString["url"];
@@ -195,7 +185,7 @@ class SimpleStreamerBridge {
                     if (File.Exists(cfg)) {
                         responseBytes = File.ReadAllBytes(cfg);
                     } else {
-                        responseBytes = Encoding.UTF8.GetBytes("{\"auth_required\":false}");
+                        responseBytes = Encoding.UTF8.GetBytes("{"auth_required":false}");
                     }
                     res.ContentType = "application/json";
                 } else if (path == "/save-destinations" && req.HttpMethod == "POST") {
@@ -213,7 +203,7 @@ class SimpleStreamerBridge {
                     string enabled = req.QueryString["enabled"] == "1" ? "true" : "false";
                     string server = req.QueryString["server"] ?? "";
                     string key = req.QueryString["key"] ?? "";
-                    string json = string.Format("{{\"enabled\":{0},\"server\":\"{1}\",\"key\":\"{2}\"}}", enabled, server, key);
+                    string json = string.Format("{{"enabled":{0},"server":"{1}","key":"{2}"}}", enabled, server, key);
                     File.WriteAllText(Path.Combine(dir, "config.json"), json, Encoding.UTF8);
                 }
 
@@ -227,7 +217,6 @@ class SimpleStreamerBridge {
 }
 '@
 
-$SourceFile = "$BridgeDir\Bridge.cs"
 Set-Content -Path $SourceFile -Value $BridgeSource -Encoding utf8
 
 $compiled = $false
@@ -237,7 +226,7 @@ try {
 } catch {
     $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
     if (Test-Path $csc) {
-        & $csc /nologo /target:winexe /out:"$BridgeExe" "$SourceFile" | Out-Null
+        & $csc /nologo /target:winexe /out:"$BridgeExe" "$SourceFile" 2>$null
         if (Test-Path $BridgeExe) { $compiled = $true }
     }
 }
@@ -250,7 +239,49 @@ if ($compiled -and (Test-Path $BridgeExe)) {
     Start-Process -FilePath $BridgeExe
     Write-Host "    [OK] Native background bridge started on port 45455." -ForegroundColor Green
 } else {
-    Write-Host "    [!] Could not compile bridge exe; will launch via background PowerShell." -ForegroundColor Yellow
+    # Fail-safe PowerShell bridge fallback
+    $PsBridgeContent = @'
+$listener = New-Object System.Net.HttpListener
+try {
+    $listener.Prefixes.Add("http://127.0.0.1:45455/")
+    $listener.Start()
+} catch { exit }
+
+while ($listener.IsListening) {
+    try {
+        $ctx = $listener.GetContext()
+        $req = $ctx.Request
+        $res = $ctx.Response
+        $res.AddHeader("Access-Control-Allow-Origin", "*")
+        $res.AddHeader("Access-Control-Allow-Private-Network", "true")
+        $res.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        $res.AddHeader("Access-Control-Allow-Headers", "*")
+
+        if ($req.HttpMethod -eq "OPTIONS") {
+            $res.StatusCode = 200
+            $res.Close()
+            continue
+        }
+
+        $path = $req.Url.AbsolutePath.ToLower()
+        if ($path -eq "/open" -or $path -eq "/open-browser") {
+            $targetUrl = $req.QueryString["url"]
+            if ($targetUrl -and ($targetUrl.StartsWith("http://") -or $targetUrl.StartsWith("https://"))) {
+                [System.Diagnostics.Process]::Start($targetUrl)
+            }
+        }
+
+        $buf = [System.Text.Encoding]::UTF8.GetBytes('{"status":"ok"}')
+        $res.ContentType = "application/json"
+        $res.ContentLength64 = $buf.Length
+        $res.OutputStream.Write($buf, 0, $buf.Length)
+        $res.Close()
+    } catch {}
+}
+'@
+    Set-Content -Path $PsBridgeFile -Value $PsBridgeContent -Encoding utf8
+    Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$PsBridgeFile`""
+    Write-Host "    [OK] PowerShell background bridge started on port 45455." -ForegroundColor Green
 }
 
 Write-Host ""
