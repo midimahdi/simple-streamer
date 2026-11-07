@@ -29,9 +29,9 @@ exit /b
 $ErrorActionPreference = "Stop"
 
 $ObsDir = "$env:APPDATA\obs-studio"
-$UserIni = "$ObsDir\user.ini"
 $DockTitle = "Simple Streamer"
 $DockUrl = "https://simple-streamer.bdjlmn.com"
+$DockUuid = "1a0d6a153e5746ecb4f9685f62a6eb05"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "    Simple Streamer - Automatic 1-Click Installer" -ForegroundColor Cyan
@@ -60,42 +60,48 @@ if (-not (Test-Path $ObsDir)) {
 
 Write-Host "[*] Configuring OBS Custom Browser Dock..." -ForegroundColor Cyan
 
-# 3. Inject Simple Streamer dock into user.ini
-$dockObj = @{ title = $DockTitle; url = $DockUrl }
-if (Test-Path $UserIni) {
-    $content = Get-Content $UserIni -Raw -Encoding utf8
-    $pattern = 'ExtraBrowserDocks=(.*)'
-    if ($content -match $pattern) {
-        $rawJson = $matches[1].Trim()
-        $docks = @()
-        if ($rawJson -and $rawJson -ne "[]") {
-            try { $docks = ConvertFrom-Json $rawJson } catch { $docks = @() }
-        }
-        $existing = $docks | Where-Object { $_.title -eq $DockTitle }
-        if ($existing) {
-            $existing.url = $DockUrl
+# 3. Helper to inject dock into an ini file (supports global.ini for OBS <=29 and user.ini for OBS >=30)
+function Set-ObsDockConfig($iniPath) {
+    $dockObj = @{ title = $DockTitle; url = $DockUrl; uuid = $DockUuid }
+    if (Test-Path $iniPath) {
+        $content = Get-Content $iniPath -Raw -Encoding utf8
+        $pattern = 'ExtraBrowserDocks=(.*)'
+        if ($content -match $pattern) {
+            $rawJson = $matches[1].Trim()
+            $docks = @()
+            if ($rawJson -and $rawJson -ne "[]") {
+                try { $docks = ConvertFrom-Json $rawJson } catch { $docks = @() }
+            }
+            $existing = $docks | Where-Object { $_.title -eq $DockTitle }
+            if ($existing) {
+                $existing.url = $DockUrl
+                $existing.uuid = $DockUuid
+            } else {
+                $docks += [PSCustomObject]$dockObj
+            }
+            $newJson = ConvertTo-Json -Compress @($docks)
+            $content = $content.Replace($matches[0], "ExtraBrowserDocks=$newJson")
         } else {
-            $docks += [PSCustomObject]$dockObj
+            $newJson = ConvertTo-Json -Compress @([PSCustomObject]$dockObj)
+            $newLine = "ExtraBrowserDocks=$newJson"
+            if ($content -match '\[BasicWindow\]') {
+                $content = $content.Replace('[BasicWindow]', "[BasicWindow]`r`n$newLine")
+            } else {
+                $content = $content + "`r`n[BasicWindow]`r`n$newLine`r`n"
+            }
         }
-        $newJson = ConvertTo-Json -Compress @($docks)
-        $content = $content.Replace($matches[0], "ExtraBrowserDocks=$newJson")
+        Set-Content -Path $iniPath -Value $content -Encoding utf8
     } else {
         $newJson = ConvertTo-Json -Compress @([PSCustomObject]$dockObj)
-        $newLine = "ExtraBrowserDocks=$newJson"
-        if ($content -match '\[BasicWindow\]') {
-            $content = $content.Replace('[BasicWindow]', "[BasicWindow]`r`n$newLine")
-        } else {
-            $content = $content + "`r`n[BasicWindow]`r`n$newLine`r`n"
-        }
+        $initialContent = "[BasicWindow]`r`nExtraBrowserDocks=$newJson`r`n"
+        Set-Content -Path $iniPath -Value $initialContent -Encoding utf8
     }
-    Set-Content -Path $UserIni -Value $content -Encoding utf8
-    Write-Host "    [OK] Simple Streamer dock configured in OBS Studio." -ForegroundColor Green
-} else {
-    $newJson = ConvertTo-Json -Compress @([PSCustomObject]$dockObj)
-    $initialContent = "[BasicWindow]`r`nExtraBrowserDocks=$newJson`r`n"
-    Set-Content -Path $UserIni -Value $initialContent -Encoding utf8
-    Write-Host "    [OK] Created OBS configuration with Simple Streamer dock." -ForegroundColor Green
 }
+
+# Inject into both global.ini (OBS 28/29) and user.ini (OBS 30+)
+Set-ObsDockConfig "$ObsDir\global.ini"
+Set-ObsDockConfig "$ObsDir\user.ini"
+Write-Host "    [OK] Simple Streamer dock registered (compatible with OBS 28, 29, and 30+)." -ForegroundColor Green
 
 # 4. Ensure OBS WebSocket server is enabled (port 4455)
 $wsConfigDir = "$ObsDir\plugin_config\obs-websocket"
