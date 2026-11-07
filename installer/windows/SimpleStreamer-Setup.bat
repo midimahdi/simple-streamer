@@ -72,14 +72,15 @@ function Set-ObsDockConfig($iniPath) {
             if ($rawJson -and $rawJson -ne "[]") {
                 try { $docks = ConvertFrom-Json $rawJson } catch { $docks = @() }
             }
-            $existing = $docks | Where-Object { $_.title -eq $DockTitle }
-            if ($existing) {
-                $existing.url = $DockUrl
-                $existing.uuid = $DockUuid
-            } else {
-                $docks += [PSCustomObject]$dockObj
+            # Filter out any existing instance cleanly without mutating old objects
+            $filtered = @()
+            foreach ($d in $docks) {
+                if ($d.title -ne $DockTitle) {
+                    $filtered += $d
+                }
             }
-            $newJson = ConvertTo-Json -Compress @($docks)
+            $filtered += [PSCustomObject]$dockObj
+            $newJson = ConvertTo-Json -Compress @($filtered)
             $content = $content.Replace($matches[0], "ExtraBrowserDocks=$newJson")
         } else {
             $newJson = ConvertTo-Json -Compress @([PSCustomObject]$dockObj)
