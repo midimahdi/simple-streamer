@@ -101,11 +101,13 @@ if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir
 $BridgePsFile = "$BridgeDir\bridge.ps1"
 $BridgeVbsFile = "$BridgeDir\bridge.vbs"
 
-# Stop existing bridge if running
-Get-Process -Name "powershell" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*SimpleStreamer\bridge.ps1*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+# Stop existing bridge if running (safe for PS 5.1 and PS 7+)
+try {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*bridge.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+} catch {}
 Start-Sleep -Milliseconds 300
 
-# Write pure PowerShell bridge (zero C# compilation needed)
+# Write pure PowerShell bridge
 $BridgeCode = @'
 $listener = New-Object System.Net.HttpListener
 try {
@@ -134,7 +136,10 @@ while ($listener.IsListening) {
         if ($path -eq "/open" -or $path -eq "/open-browser") {
             $u = $req.QueryString["url"]
             if ($u -and ($u.StartsWith("http://") -or $u.StartsWith("https://"))) {
-                [System.Diagnostics.Process]::Start($u)
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $u
+                $psi.UseShellExecute = $true
+                [System.Diagnostics.Process]::Start($psi) | Out-Null
             }
         } elseif ($path -eq "/obs-config") {
             $f = "$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json"
@@ -179,7 +184,7 @@ try {
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Value "wscript.exe `"$BridgeVbsFile`"" -Force
 } catch {}
 
-# Start bridge process silently right now
+# Start bridge process silently
 Start-Process wscript.exe -ArgumentList "`"$BridgeVbsFile`""
 Write-Host "    [OK] Background bridge running on port 45455." -ForegroundColor Green
 

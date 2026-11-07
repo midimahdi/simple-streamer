@@ -1,17 +1,31 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 chcp 65001 >nul 2>&1
 title Simple Streamer Installer
 echo ==========================================================
 echo     Simple Streamer - Windows Installer
 echo ==========================================================
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& { param($p) $t = [System.IO.Path]::Combine($env:TEMP, 'ss_install.ps1'); $c = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8); $m = '___PS_PAYLOAD___'; $i = $c.IndexOf($m); if ($i -ge 0) { [System.IO.File]::WriteAllText($t, $c.Substring($i + $m.Length), [System.Text.Encoding]::UTF8); & $t; Remove-Item $t -Force -ErrorAction SilentlyContinue } else { Write-Host '[ERROR] Installer payload corrupted.' -ForegroundColor Red } }" "%~f0"
+
+set "BAT_FILE=%~f0"
+set "TARGET_PS1=%TEMP%\ss_install.ps1"
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$lines = [System.IO.File]::ReadAllLines($env:BAT_FILE, [System.Text.Encoding]::UTF8); $out = New-Object System.Collections.Generic.List[string]; $s = $false; $m = '::' + '__PAYLOAD_BELOW__::'; foreach ($l in $lines) { if ($s) { $out.Add($l) } elseif ($l.Trim() -eq $m) { $s = $true } }; $enc = New-Object System.Text.UTF8Encoding $true; [System.IO.File]::WriteAllLines($env:TARGET_PS1, $out, $enc);"
+
+if not exist "%TARGET_PS1%" (
+    echo [ERROR] Could not extract installer script.
+    pause
+    exit /b 1
+)
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TARGET_PS1%"
+del /f /q "%TARGET_PS1%" >nul 2>&1
+
 echo.
 pause
 exit /b
 
-___PS_PAYLOAD___
+::__PAYLOAD_BELOW__::
 $ErrorActionPreference = "Stop"
 
 $ObsDir = "$env:APPDATA\obs-studio"
@@ -115,11 +129,13 @@ if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir
 $BridgePsFile = "$BridgeDir\bridge.ps1"
 $BridgeVbsFile = "$BridgeDir\bridge.vbs"
 
-# Stop existing bridge if running
-Get-Process -Name "powershell" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*SimpleStreamer\bridge.ps1*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+# Stop existing bridge if running (safe for PS 5.1 and PS 7+)
+try {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*bridge.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+} catch {}
 Start-Sleep -Milliseconds 300
 
-# Write pure PowerShell bridge (zero C# compilation needed)
+# Write pure PowerShell bridge
 $BridgeCode = @'
 $listener = New-Object System.Net.HttpListener
 try {
@@ -148,7 +164,10 @@ while ($listener.IsListening) {
         if ($path -eq "/open" -or $path -eq "/open-browser") {
             $u = $req.QueryString["url"]
             if ($u -and ($u.StartsWith("http://") -or $u.StartsWith("https://"))) {
-                [System.Diagnostics.Process]::Start($u)
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $u
+                $psi.UseShellExecute = $true
+                [System.Diagnostics.Process]::Start($psi) | Out-Null
             }
         } elseif ($path -eq "/obs-config") {
             $f = "$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json"
@@ -193,7 +212,7 @@ try {
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Value "wscript.exe `"$BridgeVbsFile`"" -Force
 } catch {}
 
-# Start bridge process silently right now
+# Start bridge process silently
 Start-Process wscript.exe -ArgumentList "`"$BridgeVbsFile`""
 Write-Host "    [OK] Background bridge running on port 45455." -ForegroundColor Green
 
