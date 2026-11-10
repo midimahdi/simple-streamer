@@ -189,3 +189,20 @@ During a live broadcast test with both Facebook and YouTube selected, Facebook s
 1. **Automated CI Build**: Updated `.github/workflows/build-plugin.yml` to extract symbol tables via `dumpbin` and generate MSVC import libraries (`obs.lib`, `obs-frontend-api.lib`), compiling a production `simple-streamer.dll` on Windows runners.
 2. **Installer Automation**: Updated `installer/windows/install.ps1` to deploy `simple-streamer.dll` into `%APPDATA%\obs-studio\plugins\simple-streamer\bin\64bit\` and `C:\Program Files\obs-studio\obs-plugins\64bit\`.
 3. **Live Machine Deployed**: Transferred and installed `simple-streamer.dll` into OBS on the remote Windows machine.
+
+---
+
+## 11. `LoadLibrary` Error (Missing Dependency) for `simple-streamer.dll` on Windows
+
+### What Happened
+When OBS Studio restarted with `simple-streamer.dll`, the OBS log showed:
+`LoadLibrary failed for '../../obs-plugins/64bit/simple-streamer.dll': The specified module could not be found.`
+
+### Root Cause
+- The initial CI build compiled with `/MD` (Dynamic Multithreaded CRT), binding the binary to the Visual Studio 2022 C++ runtime (`vcruntime140.dll` / `msvcp140.dll`).
+- On end-user Windows machines lacking that specific MSVC 2022 redistributable version, Windows refused to load the DLL.
+
+### Permanent Patch Implemented
+- Updated `.github/workflows/build-plugin.yml` compiler flag from `/MD` to `/MT` (Static Multithreaded CRT).
+- Verified with `dumpbin /DEPENDENTS` that `simple-streamer.dll` now imports ONLY `obs.dll` and `KERNEL32.dll` — zero external runtime requirements.
+- Configured automated continuous GitHub Releases publishing the standalone `SimpleStreamer-Windows-x64.zip` package to `https://github.com/midimahdi/simple-streamer/releases/tag/latest`.
