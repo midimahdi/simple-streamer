@@ -123,6 +123,33 @@ jobs:
         with:
           arch: x64
 
+      - name: Generate Import Libraries from obs.dll and obs-frontend-api.dll
+        shell: pwsh
+        run: |
+          mkdir obs-libs -Force | Out-Null
+          
+          # Generate obs.lib from obs-win/bin/64bit/obs.dll
+          dumpbin /EXPORTS obs-win/bin/64bit/obs.dll > obs.exports
+          $obsExports = @("EXPORTS")
+          Get-Content obs.exports | ForEach-Object {
+            if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+([^\s]+)') {
+              $obsExports += $matches[1]
+            }
+          }
+          $obsExports | Set-Content obs.def -Encoding ascii
+          lib /def:obs.def /machine:x64 /out:obs-libs/obs.lib
+
+          # Generate obs-frontend-api.lib
+          dumpbin /EXPORTS obs-win/bin/64bit/obs-frontend-api.dll > fe.exports
+          $feExports = @("EXPORTS")
+          Get-Content fe.exports | ForEach-Object {
+            if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+([^\s]+)') {
+              $feExports += $matches[1]
+            }
+          }
+          $feExports | Set-Content fe.def -Encoding ascii
+          lib /def:fe.def /machine:x64 /out:obs-libs/obs-frontend-api.lib
+
       - name: Compile simple-streamer.dll (MSVC x64)
         shell: cmd
         run: |
@@ -133,7 +160,7 @@ jobs:
             /I plugin\include\frontend-api ^
             /I obs-win\bin\64bit ^
             plugin\src\simple-streamer.c ^
-            /link /LIBPATH:obs-win\bin\64bit obs.lib obs-frontend-api.lib ^
+            /link /LIBPATH:obs-libs obs.lib obs-frontend-api.lib ^
             /OUT:plugin\build\x64\simple-streamer.dll
 
       - name: Package Windows Release Bundle
