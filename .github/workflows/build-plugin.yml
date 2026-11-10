@@ -1,0 +1,60 @@
+name: Build OBS Plugin
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-macos:
+    name: Build macOS Plugin (.plugin)
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install OBS Studio (macOS)
+        run: |
+          brew install --cask obs
+
+      - name: Build Plugin Bundle
+        run: |
+          chmod +x plugin/build-mac.sh
+          ./plugin/build-mac.sh
+
+      - name: Archive macOS Plugin
+        run: |
+          cd plugin/build
+          tar -czvf simple-streamer-macos.tar.gz simple-streamer.plugin
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple-streamer-macos
+          path: plugin/build/simple-streamer-macos.tar.gz
+
+  build-windows:
+    name: Package Windows Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify PowerShell Installer Syntax
+        shell: pwsh
+        run: |
+          $content = Get-Content installer/windows/install.ps1 -Raw
+          [System.Management.Automation.Language.Parser]::ParseInput($content, [ref]$null, [ref]$null)
+
+      - name: Archive Windows Installer
+        shell: pwsh
+        run: |
+          Compress-Archive -Path installer/windows/* -DestinationPath SimpleStreamer-Windows.zip
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple-streamer-windows
+          path: SimpleStreamer-Windows.zip

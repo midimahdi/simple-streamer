@@ -84,6 +84,22 @@ launchctl unload "$PLIST_PATH" 2>/dev/null || true
 launchctl load "$PLIST_PATH"
 echo "   ✓ Background LaunchAgent active."
 
+# 3b. Install Native Plugin if present
+PLUGIN_SRC=""
+if [ -d "$SCRIPT_DIR/../../plugin/build/simple-streamer.plugin" ]; then
+    PLUGIN_SRC="$SCRIPT_DIR/../../plugin/build/simple-streamer.plugin"
+elif [ -d "$SCRIPT_DIR/simple-streamer.plugin" ]; then
+    PLUGIN_SRC="$SCRIPT_DIR/simple-streamer.plugin"
+fi
+
+if [ -n "$PLUGIN_SRC" ]; then
+    echo "📦 Installing Simple Streamer native OBS plugin..."
+    mkdir -p "$OBS_DIR/plugins"
+    rm -rf "$OBS_DIR/plugins/simple-streamer.plugin"
+    cp -R "$PLUGIN_SRC" "$OBS_DIR/plugins/"
+    echo "   ✓ Native plugin installed to $OBS_DIR/plugins/simple-streamer.plugin"
+fi
+
 # 4. Inject Custom Browser Dock into OBS user.ini
 if [ -f "$USER_INI" ]; then
     echo "🔌 Injecting '$DOCK_TITLE' Custom Dock into OBS Studio..."

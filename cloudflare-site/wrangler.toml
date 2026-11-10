@@ -1,6 +1,7 @@
 name = "simple-streamer"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
+account_id = "9b9a1f11bbc94f4b2850a08546d1ad97"
 workers_dev = true
 
 routes = [

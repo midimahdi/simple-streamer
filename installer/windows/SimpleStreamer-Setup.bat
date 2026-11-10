@@ -1,152 +1,130 @@
 @echo off
-setlocal EnableExtensions
-chcp 65001 >nul 2>&1
-title Simple Streamer Installer
-echo ==========================================================
-echo     Simple Streamer - Windows Installer
-echo ==========================================================
+setlocal EnableDelayedExpansion
+title Simple Streamer Setup for OBS Studio
+
+echo =======================================================
+echo          SIMPLE STREAMER - SETUP WIZARD
+echo =======================================================
 echo.
 
-set "BAT_FILE=%~f0"
-set "TARGET_PS1=%TEMP%\ss_install.ps1"
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$lines = [System.IO.File]::ReadAllLines($env:BAT_FILE, [System.Text.Encoding]::UTF8); $out = New-Object System.Collections.Generic.List[string]; $s = $false; $m = '::' + '__PAYLOAD_BELOW__::'; foreach ($l in $lines) { if ($s) { $out.Add($l) } elseif ($l.Trim() -eq $m) { $s = $true } }; $enc = New-Object System.Text.UTF8Encoding $true; [System.IO.File]::WriteAllLines($env:TARGET_PS1, $out, $enc);"
-
-if not exist "%TARGET_PS1%" (
-    echo [ERROR] Could not extract installer script.
-    pause
-    exit /b 1
+:: 1. Check if OBS Studio is running and ask to close
+tasklist /FI "IMAGENAME eq obs64.exe" 2>NUL | find /I /N "obs64.exe">NUL
+if "%ERRORLEVEL%"=="0" (
+    echo [!] OBS Studio is currently running.
+    echo     Please save your work and close OBS Studio before proceeding.
+    echo.
+    set /p OBS_CHOICE="Do you want this setup to close OBS Studio for you? (Y/N): "
+    if /I "!OBS_CHOICE!"=="Y" (
+        echo Closing OBS Studio...
+        taskkill /F /IM obs64.exe /T >nul 2>&1
+        timeout /t 2 /nobreak >nul
+    ) else (
+        echo Please close OBS Studio and re-run this setup.
+        pause
+        exit /b 1
+    )
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TARGET_PS1%"
-del /f /q "%TARGET_PS1%" >nul 2>&1
-
-echo.
-pause
-exit /b
-
-::__PAYLOAD_BELOW__::
-$ErrorActionPreference = "Stop"
-
-$ObsDir = "$env:APPDATA\obs-studio"
-$DockTitle = "Simple Streamer"
-$DockUrl = "https://simple-streamer.bdjlmn.com"
-$DockUuid = "1a0d6a153e5746ecb4f9685f62a6eb05"
-
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "    Simple Streamer - Automatic 1-Click Installer" -ForegroundColor Cyan
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host ""
-
-# 1. Check if OBS is running
-$obsProc = Get-Process -Name "obs64", "obs32" -ErrorAction SilentlyContinue
-if ($obsProc) {
-    Write-Host "[!] OBS Studio is currently running." -ForegroundColor Yellow
-    $ans = Read-Host "    Close OBS Studio now to apply settings? [Y/n]"
-    if ([string]::IsNullOrWhiteSpace($ans) -or $ans -eq "y" -or $ans -eq "Y" -or $ans -eq "o" -or $ans -eq "O") {
-        Stop-Process -Name "obs64", "obs32" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        Write-Host "    [OK] OBS Studio closed." -ForegroundColor Green
-    } else {
-        Write-Host "[ERROR] Please close OBS Studio and run this installer again." -ForegroundColor Red
-        Exit 1
+:: 2. Execute PowerShell setup with ExecutionPolicy bypass directly
+echo [*] Installing Simple Streamer Dock and WebSocket configuration...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {
+    $ErrorActionPreference = 'Stop'
+    
+    $ObsDir = \"$env:APPDATA\obs-studio\"
+    if (-not (Test-Path $ObsDir)) {
+        Write-Host '[!] OBS Studio config directory not found at:' $ObsDir -ForegroundColor Red
+        Write-Host '    Please run OBS Studio at least once and run setup again.' -ForegroundColor Yellow
+        exit 1
     }
-}
 
-# 2. Ensure OBS directory exists
-if (-not (Test-Path $ObsDir)) {
-    New-Item -ItemType Directory -Path $ObsDir -Force | Out-Null
-}
+    # Register Custom Browser Dock
+    $DockName = 'Simple Streamer'
+    $DockUrl = 'https://simple-streamer.bdjlmn.com/dock'
 
-Write-Host "[*] Configuring OBS Custom Browser Dock..." -ForegroundColor Cyan
-
-# 3. Helper to inject dock into an ini file (supports global.ini for OBS <=29 and user.ini for OBS >=30)
-function Set-ObsDockConfig($iniPath) {
-    $dockObj = @{ title = $DockTitle; url = $DockUrl; uuid = $DockUuid }
-    if (Test-Path $iniPath) {
-        $content = Get-Content $iniPath -Raw -Encoding utf8
-        $pattern = 'ExtraBrowserDocks=(.*)'
-        if ($content -match $pattern) {
-            $rawJson = $matches[1].Trim()
-            $docks = @()
-            if ($rawJson -and $rawJson -ne "[]") {
-                try { $docks = ConvertFrom-Json $rawJson } catch { $docks = @() }
-            }
-            # Filter out any existing instance cleanly without mutating old objects
-            $filtered = @()
-            foreach ($d in $docks) {
-                if ($d.title -ne $DockTitle) {
-                    $filtered += $d
+    function Set-ObsDockConfig($file) {
+        if (-not (Test-Path $file)) { return }
+        $content = Get-Content $file -Raw -Encoding utf8
+        if ($content -notmatch '\[ExtraBrowserDocks\]') {
+            $content += \"`r`n[ExtraBrowserDocks]`r`n\"
+        }
+        if ($content -match 'ExtraBrowserDocks') {
+            if ($content -notmatch 'Simple Streamer') {
+                $lines = $content -split \"`r?`n\"
+                $newLines = @()
+                $inSection = $false
+                $added = $false
+                foreach ($line in $lines) {
+                    $newLines += $line
+                    if ($line -match '^\[ExtraBrowserDocks\]') {
+                        $inSection = $true
+                        continue
+                    }
+                    if ($inSection -and ($line -match '^\[.*\]' -or [string]::IsNullOrWhiteSpace($line)) -and (-not $added)) {
+                        $newLines = $newLines[0..($newLines.Count - 2)]
+                        $newLines += \"titles=\`\"$DockName\`\"\"
+                        $newLines += \"urls=\`\"$DockUrl\`\"\"
+                        $newLines += $line
+                        $added = $true
+                        $inSection = $false
+                    }
                 }
-            }
-            $filtered += [PSCustomObject]$dockObj
-            $newJson = ConvertTo-Json -Compress @($filtered)
-            $content = $content.Replace($matches[0], "ExtraBrowserDocks=$newJson")
-        } else {
-            $newJson = ConvertTo-Json -Compress @([PSCustomObject]$dockObj)
-            $newLine = "ExtraBrowserDocks=$newJson"
-            if ($content -match '\[BasicWindow\]') {
-                $content = $content.Replace('[BasicWindow]', "[BasicWindow]`r`n$newLine")
-            } else {
-                $content = $content + "`r`n[BasicWindow]`r`n$newLine`r`n"
+                if (-not $added) {
+                    $newLines += \"titles=\`\"$DockName\`\"\"
+                    $newLines += \"urls=\`\"$DockUrl\`\"\"
+                }
+                $content = $newLines -join \"`r`n\"
+                [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
             }
         }
-        Set-Content -Path $iniPath -Value $content -Encoding utf8
-    } else {
-        $newJson = ConvertTo-Json -Compress @([PSCustomObject]$dockObj)
-        $initialContent = "[BasicWindow]`r`nExtraBrowserDocks=$newJson`r`n"
-        Set-Content -Path $iniPath -Value $initialContent -Encoding utf8
     }
-}
 
-# Inject into both global.ini (OBS 28/29) and user.ini (OBS 30+)
-Set-ObsDockConfig "$ObsDir\global.ini"
-Set-ObsDockConfig "$ObsDir\user.ini"
-Write-Host "    [OK] Simple Streamer dock registered (compatible with OBS 28, 29, and 30+)." -ForegroundColor Green
+    Set-ObsDockConfig \"$ObsDir\global.ini\"
+    Set-ObsDockConfig \"$ObsDir\user.ini\"
+    Write-Host '    [OK] Simple Streamer dock registered (compatible with OBS 28-31+).' -ForegroundColor Green
 
-# 4. Ensure OBS WebSocket server is enabled (port 4455)
-$wsConfigDir = "$ObsDir\plugin_config\obs-websocket"
-$wsConfigFile = "$wsConfigDir\config.json"
-if (-not (Test-Path $wsConfigDir)) { New-Item -ItemType Directory -Path $wsConfigDir -Force | Out-Null }
-if (-not (Test-Path $wsConfigFile)) {
-    $wsConfig = @{
-        alerts_enabled = $false
-        auth_required = $false
-        first_load = $false
-        server_enabled = $true
-        server_password = ""
-        server_port = 4455
-    } | ConvertTo-Json
-    Set-Content -Path $wsConfigFile -Value $wsConfig -Encoding utf8
-    Write-Host "    [OK] Initialized OBS WebSocket configuration (port 4455, enabled)." -ForegroundColor Green
-} else {
+    # Configure OBS WebSocket to enabled, zero-auth localhost
+    $wsConfigDir = \"$ObsDir\plugin_config\obs-websocket\"
+    $wsConfigFile = \"$wsConfigDir\config.json\"
+    if (-not (Test-Path $wsConfigDir)) { New-Item -ItemType Directory -Path $wsConfigDir -Force | Out-Null }
+    if (-not (Test-Path $wsConfigFile)) {
+        $wsConfig = @{
+            alerts_enabled = $false
+            auth_required = $false
+            first_load = $false
+            server_enabled = $true
+            server_password = ''
+            server_port = 4455
+        } | ConvertTo-Json
+        Set-Content -Path $wsConfigFile -Value $wsConfig -Encoding utf8
+        Write-Host '    [OK] Initialized zero-auth OBS WebSocket configuration (port 4455).' -ForegroundColor Green
+    } else {
+        try {
+            $wsData = Get-Content $wsConfigFile -Raw | ConvertFrom-Json
+            $dirty = $false
+            if (-not $wsData.server_enabled) { $wsData.server_enabled = $true; $dirty = $true }
+            if ($wsData.auth_required) { $wsData.auth_required = $false; $dirty = $true }
+            if ($wsData.server_password -ne '') { $wsData.server_password = ''; $dirty = $true }
+            if ($dirty) {
+                $wsData | ConvertTo-Json | Set-Content -Path $wsConfigFile -Encoding utf8
+                Write-Host '    [OK] Configured zero-auth localhost OBS WebSocket.' -ForegroundColor Green
+            }
+        } catch {}
+    }
+
+    # Setup Native Background Bridge (Port 45455)
+    $BridgeDir = \"$env:LOCALAPPDATA\SimpleStreamer\"
+    if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
+    $BridgePsFile = \"$BridgeDir\bridge.ps1\"
+    $BridgeVbsFile = \"$BridgeDir\bridge.vbs\"
+
     try {
-        $wsData = Get-Content $wsConfigFile -Raw | ConvertFrom-Json
-        if (-not $wsData.server_enabled) {
-            $wsData.server_enabled = $true
-            $wsData | ConvertTo-Json | Set-Content -Path $wsConfigFile -Encoding utf8
-            Write-Host "    [OK] Enabled OBS WebSocket server in config." -ForegroundColor Green
-        }
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*bridge.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     } catch {}
-}
 
-# 5. Set up Native Background Bridge (Port 45455)
-$BridgeDir = "$env:LOCALAPPDATA\SimpleStreamer"
-if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
-$BridgePsFile = "$BridgeDir\bridge.ps1"
-$BridgeVbsFile = "$BridgeDir\bridge.vbs"
-
-# Stop existing bridge if running (safe for PS 5.1 and PS 7+)
-try {
-    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*bridge.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-} catch {}
-Start-Sleep -Milliseconds 300
-
-# Write pure PowerShell bridge
-$BridgeCode = @'
+    $BridgeCode = @'
 $listener = New-Object System.Net.HttpListener
 try {
-    $listener.Prefixes.Add("http://127.0.0.1:45455/")
+    $listener.Prefixes.Add(\"http://127.0.0.1:45455/\")
     $listener.Start()
 } catch { exit }
 
@@ -156,78 +134,104 @@ while ($listener.IsListening) {
         $req = $ctx.Request
         $res = $ctx.Response
 
-        $res.AddHeader("Access-Control-Allow-Origin", "*")
-        $res.AddHeader("Access-Control-Allow-Private-Network", "true")
-        $res.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        $res.AddHeader("Access-Control-Allow-Headers", "*")
+        $res.AddHeader(\"Access-Control-Allow-Origin\", \"*\")
+        $res.AddHeader(\"Access-Control-Allow-Private-Network\", \"true\")
+        $res.AddHeader(\"Access-Control-Allow-Methods\", \"GET, POST, OPTIONS\")
+        $res.AddHeader(\"Access-Control-Allow-Headers\", \"*\")
 
-        if ($req.HttpMethod -eq "OPTIONS") {
+        if ($req.HttpMethod -eq \"OPTIONS\") {
             $res.StatusCode = 200
             $res.Close()
             continue
         }
 
-        $path = $req.Url.AbsolutePath.ToLower()
-        if ($path -eq "/open" -or $path -eq "/open-browser") {
-            $u = $req.QueryString["url"]
-            if ($u -and ($u.StartsWith("http://") -or $u.StartsWith("https://"))) {
-                $psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $u
-                $psi.UseShellExecute = $true
-                [System.Diagnostics.Process]::Start($psi) | Out-Null
-            }
-        } elseif ($path -eq "/obs-config") {
-            $f = "$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json"
-            $b = if (Test-Path $f) { [System.IO.File]::ReadAllBytes($f) } else { [System.Text.Encoding]::UTF8.GetBytes('{"auth_required":false}') }
-            $res.ContentType = "application/json"
-            $res.ContentLength64 = $b.Length
-            $res.OutputStream.Write($b, 0, $b.Length)
+        $path = $req.Url.AbsolutePath
+
+        if ($path -eq \"/focus-obs\") {
+            try {
+                $ws = New-Object -ComObject WScript.Shell
+                $ws.AppActivate(\"OBS\") | Out-Null
+            } catch {}
+            $buf = [System.Text.Encoding]::UTF8.GetBytes(\"{\`\"ok\`\":true}\")
+            $res.ContentType = \"application/json\"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
             $res.Close()
             continue
-        } elseif ($path -eq "/save-destinations" -and $req.HttpMethod -eq "POST") {
-            $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
-            if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-            $s = [System.IO.File]::Create("$d\config.json")
-            $req.InputStream.CopyTo($s)
-            $s.Close()
-        } elseif ($path -eq "/save-secondary") {
-            $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
-            if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-            $en = if ($req.QueryString["enabled"] -eq "1") { "true" } else { "false" }
-            $srv = $req.QueryString["server"]
-            $k = $req.QueryString["key"]
-            $json = "{`"enabled`":$en,`"server`":`"$srv`",`"key`":`"$k`"}"
-            [System.IO.File]::WriteAllText("$d\config.json", $json, [System.Text.Encoding]::UTF8)
         }
 
-        $b = [System.Text.Encoding]::UTF8.GetBytes('{"status":"ok"}')
-        $res.ContentType = "application/json"
-        $res.ContentLength64 = $b.Length
-        $res.OutputStream.Write($b, 0, $b.Length)
+        if ($path -eq \"/obs-config\") {
+            $obsWs = \"$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json\"
+            $json = \"{}\"
+            if (Test-Path $obsWs) { $json = [System.IO.File]::ReadAllText($obsWs, [System.Text.Encoding]::UTF8) }
+            $buf = [System.Text.Encoding]::UTF8.GetBytes($json)
+            $res.ContentType = \"application/json\"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq \"/save-destinations\" -and $req.HttpMethod -eq \"POST\") {
+            $d = \"$env:APPDATA\obs-studio\plugin_config\simple-streamer\"
+            if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+            $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+            $body = $reader.ReadToEnd()
+            [System.IO.File]::WriteAllText(\"$d\config.json\", $body, [System.Text.Encoding]::UTF8)
+            $buf = [System.Text.Encoding]::UTF8.GetBytes(\"{\`\"ok\`\":true}\")
+            $res.ContentType = \"application/json\"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq \"/save-secondary\") {
+            $d = \"$env:APPDATA\obs-studio\plugin_config\simple-streamer\"
+            if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+            $en = if ($req.QueryString[\"enabled\"] -eq \"1\") { \"true\" } else { \"false\" }
+            $srv = $req.QueryString[\"server\"]
+            $k = $req.QueryString[\"key\"]
+            $json = \"{\`\"enabled\`\":$en,\`\"armed\`\":$en,\`\"server\`\":\`\"$srv\`\",\`\"key\`\":\`\"$k\`\"}\"
+            [System.IO.File]::WriteAllText(\"$d\config.json\", $json, [System.Text.Encoding]::UTF8)
+        }
+
+        $buf = [System.Text.Encoding]::UTF8.GetBytes(\"{\`\"ok\`\":true}\")
+        $res.ContentType = \"application/json\"
+        $res.OutputStream.Write($buf, 0, $buf.Length)
         $res.Close()
-    } catch {}
+    } catch {
+        try { $res.Close() } catch {}
+    }
 }
 '@
-Set-Content -Path $BridgePsFile -Value $BridgeCode -Encoding utf8
+    [System.IO.File]::WriteAllText($BridgePsFile, $BridgeCode, [System.Text.Encoding]::UTF8)
 
-# Create silent VBScript background launcher
-$VbsCode = "CreateObject(`"Wscript.Shell`").Run `"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"`"$BridgePsFile`"`"`", 0, False"
-Set-Content -Path $BridgeVbsFile -Value $VbsCode -Encoding ascii
+    # Silent VBS launcher (runs bridge invisible without console window)
+    $VbsCode = \"Set WshShell = CreateObject(`\"WScript.Shell`\")`r`nWshShell.Run `\"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `\"\"\" & `\"$BridgePsFile`\" & `\"`\"\"`, 0, False\"
+    [System.IO.File]::WriteAllText($BridgeVbsFile, $VbsCode, [System.Text.Encoding]::UTF8)
 
-# Register in Windows Startup
-try {
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Value "wscript.exe `"$BridgeVbsFile`"" -Force
-} catch {}
+    # Startup shortcut to keep bridge running across reboots
+    $StartupDir = [Environment]::GetFolderPath('Startup')
+    $WshShell = New-Object -ComObject WScript.Shell
+    $Shortcut = $WshShell.CreateShortcut(\"$StartupDir\SimpleStreamerBridge.lnk\")
+    $Shortcut.TargetPath = \"wscript.exe\"
+    $Shortcut.Arguments = \"`\"$BridgeVbsFile`\"\"
+    $Shortcut.WindowStyle = 7
+    $Shortcut.Save()
 
-# Start bridge process silently
-Start-Process wscript.exe -ArgumentList "`"$BridgeVbsFile`""
-Write-Host "    [OK] Background bridge running on port 45455." -ForegroundColor Green
+    # Launch bridge now
+    Start-Process \"wscript.exe\" -ArgumentList \"`\"$BridgeVbsFile`\"\"
+    Write-Host '    [OK] Background bridge installed and running on port 45455.' -ForegroundColor Green
+}"
 
-Write-Host ""
-Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "    Installation Complete!" -ForegroundColor Green
-Write-Host "    1. Open OBS Studio." -ForegroundColor Cyan
-Write-Host "    2. Find 'Simple Streamer' in your Docks menu." -ForegroundColor Cyan
-Write-Host "    3. Click 'Sign In' to connect your channels!" -ForegroundColor Cyan
-Write-Host "==========================================================" -ForegroundColor Green
-Write-Host ""
+if "%ERRORLEVEL%"=="0" (
+    echo.
+    echo =======================================================
+    echo   [SUCCESS] Simple Streamer setup completed!
+    echo   You can now launch OBS Studio. Look for the
+    echo   'Simple Streamer' dock under Docks in the top menu.
+    echo =======================================================
+) else (
+    echo.
+    echo [ERROR] Setup encountered an issue. Please run as Administrator.
+)
+
+pause

@@ -72,6 +72,7 @@ static void save_secondary_config(BOOL enabled, NSString *server, NSString *key)
     NSString *path = [dir stringByAppendingPathComponent:@"config.json"];
     NSDictionary *dict = @{
         @"enabled": @(enabled),
+        @"armed": @(enabled),
         @"server": server ?: @"",
         @"key": key ?: @""
     };

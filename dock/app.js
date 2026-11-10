@@ -92,6 +92,61 @@ function logDiag(msg) {
 }
 
 /**
+ * Update Main Action Button state based on OBS connection & system readiness
+ */
+function updateActionBtnState() {
+  if (state.isStreaming) {
+    el.actionBtn.disabled = false;
+    el.actionBtn.className = 'btn-primary stop';
+    el.actionBtnText.textContent = '⏹ STOP STREAM';
+    return;
+  }
+
+  if (state.isPreparing) {
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary';
+    el.actionBtnText.textContent = 'PREPARING STREAM...';
+    return;
+  }
+
+  if (state.isEnding) {
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary';
+    el.actionBtnText.textContent = 'ENDING STREAM...';
+    return;
+  }
+
+  if (!state.obs.isConnected) {
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary';
+    el.actionBtnText.textContent = 'CONNECTING TO OBS...';
+    return;
+  }
+
+  // Check destination readiness
+  const enabledTargets = state.destinations.filter((d) => d.enabled);
+  if (enabledTargets.length === 0) {
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary';
+    el.actionBtnText.textContent = 'SELECT DESTINATION FIRST';
+    return;
+  }
+
+  const hasInvalid = enabledTargets.some((d) => d.status === 'invalid');
+  if (hasInvalid) {
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary';
+    el.actionBtnText.textContent = 'DESTINATION ERROR - CHECK SETTINGS';
+    return;
+  }
+
+  // Ready to stream
+  el.actionBtn.disabled = false;
+  el.actionBtn.className = 'btn-primary';
+  el.actionBtnText.textContent = '▶ GO LIVE';
+}
+
+/**
  * Update UI Status Badge
  */
 function setStatus(text, type = 'connected') {
@@ -99,6 +154,7 @@ function setStatus(text, type = 'connected') {
     el.statusBadge.textContent = text;
     el.statusBadge.className = `badge ${type}`;
   }
+  updateActionBtnState();
 }
 
 /**
@@ -260,6 +316,7 @@ function saveDestinations() {
   renderDestinationsPills();
   renderDestinationsList();
   syncNativePluginConfig();
+  updateActionBtnState();
 }
 
 /**
@@ -421,6 +478,7 @@ async function validateAllDestinations() {
 
     saveDestinations();
     logDiag('✓ Health check completed for all destinations.');
+    updateActionBtnState();
   } catch (err) {
     logDiag(`Global health check notice: ${err.message}`);
     state.destinations.forEach((d) => {
@@ -990,6 +1048,7 @@ async function handleGoLive() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          armed: true,
           outputs: secondaries.map((s, idx) => {
             let server = s.serverUrl;
             if (s.platform === 'kick' && server && !server.includes('/app')) {
@@ -1010,8 +1069,13 @@ async function handleGoLive() {
       logDiag(`Secondary bridge notice: ${e.message}`);
     }
   } else {
-    // Disable secondary plugin if only 1 target
-    fetch('http://127.0.0.1:45455/save-secondary?enabled=0', { mode: 'cors' }).catch(() => {});
+    // Disable and disarm secondary plugin if only 1 target
+    fetch('http://127.0.0.1:45455/save-destinations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ armed: false, outputs: [] }),
+      mode: 'cors',
+    }).catch(() => {});
   }
 
   // 3. Start OBS Stream
@@ -1075,9 +1139,7 @@ function setLiveUI(isLive) {
     if (el.liveContainer) el.liveContainer.style.display = 'none';
     if (el.inputGroup) el.inputGroup.style.display = 'block';
 
-    el.actionBtn.disabled = false;
-    el.actionBtn.className = 'btn-primary';
-    el.actionBtnText.textContent = '▶ GO LIVE';
+    updateActionBtnState();
 
     if (el.platformLiveGrid) el.platformLiveGrid.innerHTML = '';
     state.activeBroadcast.destinations = [];
@@ -1126,7 +1188,15 @@ function renderPlatformLiveGrid() {
 function updateLiveHeaderDynamic() {
   if (!el.liveHeader) return;
   const dests = state.activeBroadcast.destinations;
-  if (!dests || dests.length === 0) return;
+  if (!dests || dests.length === 0) {
+    el.liveHeader.textContent = '● OBS STREAMING (PRIMARY ONLY)';
+    el.liveHeader.style.color = '#38bdf8';
+    if (el.metricRecord) {
+      el.metricRecord.textContent = 'OBS ACTIVE';
+      el.metricRecord.style.color = '#38bdf8';
+    }
+    return;
+  }
 
   const liveCount = dests.filter((d) => d.isLive).length;
   const totalCount = dests.length;
@@ -1520,6 +1590,14 @@ async function handleEndStream() {
     }).catch((err) => logDiag(`Teardown warning: ${err.message}`));
   }
 
+  // Disarm secondary outputs in native plugin
+  fetch('http://127.0.0.1:45455/save-destinations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ armed: false, outputs: [] }),
+    mode: 'cors',
+  }).catch(() => {});
+
   setLiveUI(false);
   clearAlert();
   logDiag('Stream terminated cleanly.');
@@ -1557,6 +1635,7 @@ async function connectObs(isRetry = false) {
     logDiag('✓ Connected to OBS WebSocket v5');
     setStatus('● CONNECTED', 'connected');
     clearAlert();
+    updateActionBtnState();
     validateAllDestinations();
 
     const streamStatus = await state.obs.call('GetStreamStatus');
@@ -1579,6 +1658,7 @@ async function connectObs(isRetry = false) {
     }
 
     setStatus('WAITING FOR OBS...', 'preparing');
+    updateActionBtnState();
     scheduleObsReconnect();
   }
 }
@@ -1774,6 +1854,7 @@ function initEvents() {
   state.obs.on('disconnected', () => {
     logDiag('OBS WebSocket disconnected. Scheduling auto-reconnect...');
     setStatus('WAITING FOR OBS...', 'preparing');
+    updateActionBtnState();
     scheduleObsReconnect();
   });
 
@@ -1790,6 +1871,7 @@ function initEvents() {
 }
 
 // Initial Boot Sequence
+updateActionBtnState();
 initEvents();
 prepareAuthSessions();
 connectObs();

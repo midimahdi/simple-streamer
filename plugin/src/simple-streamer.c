@@ -48,7 +48,7 @@ static void release_all_secondary_outputs(void)
 		struct secondary_target *t = &sec_targets[i];
 		if (t->output) {
 			if (obs_output_active(t->output)) {
-				obs_output_force_stop(t->output);
+				obs_output_stop(t->output);
 			}
 			obs_output_release(t->output);
 			t->output = NULL;
@@ -162,12 +162,26 @@ static void start_all_secondary_outputs(void)
 	}
 
 	obs_data_t *cfg = obs_data_create_from_json_file(cfg_path);
-	bfree(cfg_path);
-
 	if (!cfg) {
+		bfree(cfg_path);
 		blog(LOG_INFO, "[SimpleStreamer] No config.json found. Skipping secondary streams.");
 		return;
 	}
+
+	// Guard: Only start secondary outputs if explicitly armed by the Simple Streamer app/dock.
+	// If the user started streaming via the native OBS button or another plugin, secondary outputs must not start.
+	bool armed = obs_data_get_bool(cfg, "armed");
+	if (!armed) {
+		blog(LOG_INFO, "[SimpleStreamer] Stream started independently (OBS button/other). Secondary outputs not armed (skipping).");
+		obs_data_release(cfg);
+		bfree(cfg_path);
+		return;
+	}
+
+	// Disarm immediately so subsequent stream starts will not auto-trigger secondary outputs
+	obs_data_set_bool(cfg, "armed", false);
+	obs_data_save_json_safe(cfg, cfg_path, "tmp", "bak");
+	bfree(cfg_path);
 
 	obs_output_t *main_out = obs_frontend_get_streaming_output();
 	if (!main_out) {
@@ -178,6 +192,20 @@ static void start_all_secondary_outputs(void)
 
 	obs_encoder_t *venc = obs_output_get_video_encoder(main_out);
 	obs_encoder_t *aenc = obs_output_get_audio_encoder(main_out, 0);
+
+	// Detect primary stream server URL to prevent duplicate streaming conflicts
+	char main_server[512] = {0};
+	obs_service_t *main_svc = obs_output_get_service(main_out);
+	if (main_svc) {
+		obs_data_t *svc_settings = obs_service_get_settings(main_svc);
+		if (svc_settings) {
+			const char *srv = obs_data_get_string(svc_settings, "server");
+			if (srv && *srv) {
+				snprintf(main_server, sizeof(main_server), "%s", srv);
+			}
+			obs_data_release(svc_settings);
+		}
+	}
 	obs_output_release(main_out);
 
 	if (!venc || !aenc) {
@@ -200,7 +228,12 @@ static void start_all_secondary_outputs(void)
 			const char *key = obs_data_get_string(item, "key");
 
 			if (enabled && server && *server && key && *key) {
-				start_single_secondary_target(id, name, server, key, venc, aenc);
+				// Check for collision with primary stream
+				if (main_server[0] && strstr(server, main_server) != NULL) {
+					blog(LOG_WARNING, "[SimpleStreamer] Output '%s' matches primary stream destination (%s). Skipping duplicate.", name, server);
+				} else {
+					start_single_secondary_target(id, name, server, key, venc, aenc);
+				}
 			}
 			obs_data_release(item);
 		}
@@ -212,7 +245,11 @@ static void start_all_secondary_outputs(void)
 		const char *key = obs_data_get_string(cfg, "key");
 
 		if (enabled && server && *server && key && *key) {
-			start_single_secondary_target("legacy", "Secondary RTMP", server, key, venc, aenc);
+			if (main_server[0] && strstr(server, main_server) != NULL) {
+				blog(LOG_WARNING, "[SimpleStreamer] Legacy target matches primary stream destination (%s). Skipping duplicate.", server);
+			} else {
+				start_single_secondary_target("legacy", "Secondary RTMP", server, key, venc, aenc);
+			}
 		}
 	}
 

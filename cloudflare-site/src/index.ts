@@ -22,12 +22,20 @@ export default {
       return new Response(dataDeletionHtml(), { headers });
     }
 
-    if (pathname === '/about') {
+    const isExplicitDock = pathname === '/dock' || pathname === '/app' || url.searchParams.has('dock');
+    const isObsUserAgent = (request.headers.get('user-agent') || '').includes('OBS/');
+
+    // Public Product Home Page (Accessible to all public users and Google reviewers without login)
+    if ((pathname === '' || pathname === '/' || pathname === '/about' || pathname === '/home') && !isExplicitDock && !isObsUserAgent) {
       return new Response(homeHtml(), { headers });
     }
 
-    // Proxy everything else to Cloud Run backend (OBS Dock, Setup Wizard, API endpoints)
-    const targetUrl = new URL(url.pathname + url.search, CLOUD_RUN_ORIGIN);
+    // Proxy to Cloud Run backend (OBS Dock, Setup Wizard, API endpoints)
+    let targetPath = url.pathname + url.search;
+    if (pathname === '/dock' || pathname === '/app') {
+      targetPath = '/index.html' + (url.search ? url.search : '');
+    }
+    const targetUrl = new URL(targetPath, CLOUD_RUN_ORIGIN);
     const proxyHeaders = new Headers(request.headers);
     proxyHeaders.set('host', new URL(CLOUD_RUN_ORIGIN).host);
     proxyHeaders.set('x-forwarded-host', url.host);
@@ -210,14 +218,29 @@ function homeHtml(): string {
       </p>
     </div>
 
+    <div class="card">
+      <h2>How Simple Streamer Uses Third-Party Platforms</h2>
+      <p style="margin-bottom: 12px;">
+        Simple Streamer enables users to connect their authorized streaming channels via secure OAuth 2.0 to broadcast live video:
+      </p>
+      <ul>
+        <li><strong>YouTube Live Integration:</strong> Authenticates via Google OAuth (<code>youtube</code> and <code>youtube.force-ssl</code> scopes) solely to create scheduled live broadcast containers and stream keys for the operator's channel when they start a broadcast in OBS, and marks broadcasts complete upon stopping.</li>
+        <li><strong>Facebook Live, Twitch & Kick:</strong> Retrieves RTMP ingestion endpoints and stream keys dynamically to distribute video streams simultaneously.</li>
+        <li><strong>No General Account Login Required:</strong> All product documentation, terms of service, and privacy notices on this website are openly accessible to any visitor without logging in or providing personal details.</li>
+      </ul>
+    </div>
+
     <div class="card card-highlight">
       <h2>Stateless & Privacy-First Architecture</h2>
       <p>
         Simple Streamer stores <strong>zero user data, zero account credentials, and zero stream keys</strong> on external servers. All OAuth tokens and platform credentials are stored strictly in client-side storage within OBS Studio on the operator's computer.
       </p>
-      <p>
-        For detailed compliance information, please review our <a href="/privacy" style="color: #60a5fa;">Privacy Policy</a>, <a href="/terms" style="color: #60a5fa;">Terms of Service</a>, and <a href="/data-deletion" style="color: #60a5fa;">Data Deletion Instructions</a>.
+      <p style="margin-top: 12px;">
+        For detailed compliance information, please review our <a href="/privacy" style="color: #60a5fa; font-weight: 600;">Privacy Policy</a>, <a href="/terms" style="color: #60a5fa; font-weight: 600;">Terms of Service</a>, and <a href="/data-deletion" style="color: #60a5fa; font-weight: 600;">Data Deletion Instructions</a>.
       </p>
+      <div style="margin-top: 18px;">
+        <a href="/dock" style="display: inline-block; background: #2563eb; color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 6px; font-weight: 700; font-size: 14px;">Open OBS Web Dock →</a>
+      </div>
     </div>`
   );
 }
