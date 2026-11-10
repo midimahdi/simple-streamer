@@ -103,11 +103,15 @@ if (-not (Test-Path $wsConfigFile)) {
 $BridgeDir = "$env:LOCALAPPDATA\SimpleStreamer"
 if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
 $BridgePsFile = "$BridgeDir\bridge.ps1"
-$BridgeVbsFile = "$BridgeDir\bridge.vbs"
 
+# Stop any running bridge process
 try {
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*bridge.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 } catch {}
+
+# Clean up legacy VBS launcher if present
+$OldVbs = "$BridgeDir\bridge.vbs"
+if (Test-Path $OldVbs) { Remove-Item $OldVbs -Force -ErrorAction SilentlyContinue }
 
 $BridgeCode = @'
 $listener = New-Object System.Net.HttpListener
@@ -192,21 +196,18 @@ while ($listener.IsListening) {
 '@
 [System.IO.File]::WriteAllText($BridgePsFile, $BridgeCode, [System.Text.Encoding]::UTF8)
 
-# Silent VBS launcher (saved as ASCII/ANSI for WSH compatibility)
-$VbsCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"`"$BridgePsFile`"`"`, 0, False"
-[System.IO.File]::WriteAllText($BridgeVbsFile, $VbsCode, [System.Text.Encoding]::ASCII)
-
-# Startup shortcut
+# Create 100% Native Windows Startup Shortcut (Powershell -WindowStyle Hidden directly)
 $StartupDir = [Environment]::GetFolderPath('Startup')
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("$StartupDir\SimpleStreamerBridge.lnk")
-$Shortcut.TargetPath = "wscript.exe"
-$Shortcut.Arguments = "`"$BridgeVbsFile`""
+$Shortcut.TargetPath = "powershell.exe"
+$Shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$BridgePsFile`""
 $Shortcut.WindowStyle = 7
+$Shortcut.Description = "Simple Streamer OBS Bridge"
 $Shortcut.Save()
 
-# Launch bridge directly without popups
-Start-Process "wscript.exe" -ArgumentList "`"$BridgeVbsFile`"" -ErrorAction SilentlyContinue
+# Launch bridge directly right now (invisible)
+Start-Process "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$BridgePsFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
 Write-Host "    [OK] Background bridge installed and running on port 45455." -ForegroundColor Green
 
 Write-Host ""
