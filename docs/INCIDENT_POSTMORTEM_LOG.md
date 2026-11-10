@@ -153,3 +153,21 @@ Running the installer gave:
 
 ### Permanent Patch Implemented
 - `SimpleStreamer-Setup.bat` always fetches the latest, complete script from GitHub directly into `%TEMP%` before execution, ensuring stale local files never run.
+
+---
+
+## 9. Missing `/open` Endpoint in Windows Bridge (OAuth Browser Failure)
+
+### What Happened
+In OBS Studio on Windows, clicking "+ Add Platform" (YouTube, Facebook, Twitch, Kick) failed silently. No browser tab opened, leaving the user unable to authenticate.
+
+### Root Cause
+- OBS Browser Docks run in a sandboxed Chromium (CEF) environment where `window.open()` is blocked by OBS security policy.
+- The dock delegates external URL launching to the local bridge via `GET http://127.0.0.1:45455/open?url=...`.
+- The macOS bridge had this endpoint (`/usr/bin/open`), but the Windows PowerShell bridge (`bridge.ps1`) did not implement the `/open` route, causing the request to 404 and fail silently.
+
+### Permanent Patch Implemented
+- In `installer/windows/install.ps1`:
+  - Implemented `/open` using native Windows `Start-Process $targetUrl` with fallback to `[System.Diagnostics.Process]::Start`.
+  - Ensures the user's default Windows browser (Chrome, Edge, Firefox) immediately pops open with the OAuth authentication window.
+  - Committed and pushed in `51c48c5`.
