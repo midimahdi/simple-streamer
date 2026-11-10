@@ -152,10 +152,38 @@ while ($listener.IsListening) {
         }
 
         if ($path -eq "/obs-config") {
+            $globalIni = "$env:APPDATA\obs-studio\global.ini"
             $obsWs = "$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json"
-            $json = "{}"
-            if (Test-Path $obsWs) { $json = [System.IO.File]::ReadAllText($obsWs, [System.Text.Encoding]::UTF8) }
-            $buf = [System.Text.Encoding]::UTF8.GetBytes($json)
+            $pass = ""
+            $port = 4455
+
+            if (Test-Path $globalIni) {
+                try {
+                    $txt = [System.IO.File]::ReadAllText($globalIni, [System.Text.Encoding]::UTF8)
+                    if ($txt -match "ServerPassword=([^\r\n]+)") {
+                        $pass = $matches[1]
+                    }
+                    if ($txt -match "ServerPort=(\d+)") {
+                        $port = [int]$matches[1]
+                    }
+                } catch {}
+            }
+
+            if (-not $pass -and (Test-Path $obsWs)) {
+                try {
+                    $jsonObj = Get-Content $obsWs -Raw | ConvertFrom-Json
+                    if ($jsonObj.server_password) { $pass = $jsonObj.server_password }
+                    if ($jsonObj.server_port) { $port = $jsonObj.server_port }
+                } catch {}
+            }
+
+            $respObj = @{
+                server_password = $pass
+                server_port = $port
+                auth_required = [bool]$pass
+            }
+            $respJson = $respObj | ConvertTo-Json
+            $buf = [System.Text.Encoding]::UTF8.GetBytes($respJson)
             $res.ContentType = "application/json"
             $res.OutputStream.Write($buf, 0, $buf.Length)
             $res.Close()
