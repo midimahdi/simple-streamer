@@ -139,6 +139,22 @@ while ($listener.IsListening) {
 
         $path = $req.Url.AbsolutePath
 
+        if ($path -eq "/open") {
+            $targetUrl = $req.QueryString["url"]
+            if ($targetUrl) {
+                try {
+                    Start-Process $targetUrl
+                } catch {
+                    [System.Diagnostics.Process]::Start($targetUrl)
+                }
+            }
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"ok\`":true}")
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
         if ($path -eq "/focus-obs") {
             try {
                 $ws = New-Object -ComObject WScript.Shell
