@@ -25,204 +25,27 @@ if "%ERRORLEVEL%"=="0" (
     )
 )
 
-:: 2. Execute PowerShell setup with ExecutionPolicy bypass directly
+:: 2. Check if install.ps1 exists next to bat, otherwise extract embedded payload
+set "SCRIPT_DIR=%~dp0"
+set "PS_SCRIPT=%SCRIPT_DIR%install.ps1"
+set "TEMP_PS="
+
+if not exist "%PS_SCRIPT%" (
+    set "PS_SCRIPT=%TEMP%\SimpleStreamer_install_%RANDOM%.ps1"
+    set "TEMP_PS=1"
+    powershell.exe -NoProfile -Command "[System.IO.File]::WriteAllBytes('%TEMP%\SimpleStreamer_install.ps1', [System.Convert]::FromBase64String('IyBTaW1wbGUgU3RyZWFtZXIgV2luZG93cyBJbnN0YWxsZXIgKFBvd2VyU2hlbGwpCiMgUmVxdWlyZXMgUG93ZXJTaGVsbCA1LjErIChCdWlsdC1pbiBvbiBXaW5kb3dzIDEwLzExKQoKJEVycm9yQWN0aW9uUHJlZmVyZW5jZSA9ICJTdG9wIgoKV3JpdGUtSG9zdCAiPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PSIgLUZvcmVncm91bmRDb2xvciBDeWFuCldyaXRlLUhvc3QgIiAgICAgIFNJTVBMRSBTVFJFQU1FUiAtIE9CUyBTVFVESU8gSU5TVEFMTEVSIiAtRm9yZWdyb3VuZENvbG9yIEN5YW4KV3JpdGUtSG9zdCAiPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PSIgLUZvcmVncm91bmRDb2xvciBDeWFuCldyaXRlLUhvc3QgIiIKCiMgMS4gQ2hlY2sgaWYgT0JTIFN0dWRpbyBpcyBydW5uaW5nCiRvYnNQcm9jID0gR2V0LVByb2Nlc3MgLU5hbWUgIm9iczY0IiAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZQppZiAoJG9ic1Byb2MpIHsKICAgIFdyaXRlLUhvc3QgIlshXSBPQlMgU3R1ZGlvIGlzIGN1cnJlbnRseSBydW5uaW5nLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgIFdyaXRlLUhvc3QgIiAgICBDbG9zaW5nIE9CUyBTdHVkaW8gdG8gcmVnaXN0ZXIgZG9ja3Mgc2FmZWx5Li4uIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgU3RvcC1Qcm9jZXNzIC1OYW1lICJvYnM2NCIgLUZvcmNlIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlCiAgICBTdGFydC1TbGVlcCAtU2Vjb25kcyAyCn0KCiMgMi4gQ2hlY2sgT0JTIENvbmZpZyBEaXJlY3RvcnkKJE9ic0RpciA9ICIkZW52OkFQUERBVEFcb2JzLXN0dWRpbyIKaWYgKC1ub3QgKFRlc3QtUGF0aCAkT2JzRGlyKSkgewogICAgV3JpdGUtSG9zdCAiWyFdIE9CUyBTdHVkaW8gY29uZmlnIGRpcmVjdG9yeSBub3QgZm91bmQgYXQ6IiAkT2JzRGlyIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICBXcml0ZS1Ib3N0ICIgICAgUGxlYXNlIGxhdW5jaCBPQlMgU3R1ZGlvIGF0IGxlYXN0IG9uY2UgYW5kIHJ1biB0aGlzIGluc3RhbGxlciBhZ2Fpbi4iIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93CiAgICBleGl0IDEKfQoKIyAzLiBSZWdpc3RlciBDdXN0b20gQnJvd3NlciBEb2NrCiREb2NrTmFtZSA9ICJTaW1wbGUgU3RyZWFtZXIiCiREb2NrVXJsID0gImh0dHBzOi8vc2ltcGxlLXN0cmVhbWVyLmJkamxtbi5jb20vZG9jayIKCmZ1bmN0aW9uIFNldC1PYnNEb2NrQ29uZmlnKCRmaWxlKSB7CiAgICBpZiAoLW5vdCAoVGVzdC1QYXRoICRmaWxlKSkgeyByZXR1cm4gfQogICAgJGNvbnRlbnQgPSBHZXQtQ29udGVudCAkZmlsZSAtUmF3IC1FbmNvZGluZyB1dGY4CiAgICBpZiAoJGNvbnRlbnQgLW5vdG1hdGNoICdcW0V4dHJhQnJvd3NlckRvY2tzXF0nKSB7CiAgICAgICAgJGNvbnRlbnQgKz0gImByYG5bRXh0cmFCcm93c2VyRG9ja3NdYHJgbiIKICAgIH0KICAgIGlmICgkY29udGVudCAtbWF0Y2ggJ0V4dHJhQnJvd3NlckRvY2tzJykgewogICAgICAgIGlmICgkY29udGVudCAtbm90bWF0Y2ggJ1NpbXBsZSBTdHJlYW1lcicpIHsKICAgICAgICAgICAgJGxpbmVzID0gJGNvbnRlbnQgLXNwbGl0ICJgcj9gbiIKICAgICAgICAgICAgJG5ld0xpbmVzID0gQCgpCiAgICAgICAgICAgICRpblNlY3Rpb24gPSAkZmFsc2UKICAgICAgICAgICAgJGFkZGVkID0gJGZhbHNlCiAgICAgICAgICAgIGZvcmVhY2ggKCRsaW5lIGluICRsaW5lcykgewogICAgICAgICAgICAgICAgJG5ld0xpbmVzICs9ICRsaW5lCiAgICAgICAgICAgICAgICBpZiAoJGxpbmUgLW1hdGNoICdeXFtFeHRyYUJyb3dzZXJEb2Nrc1xdJykgewogICAgICAgICAgICAgICAgICAgICRpblNlY3Rpb24gPSAkdHJ1ZQogICAgICAgICAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBpZiAoJGluU2VjdGlvbiAtYW5kICgkbGluZSAtbWF0Y2ggJ15cWy4qXF0nIC1vciBbc3RyaW5nXTo6SXNOdWxsT3JXaGl0ZVNwYWNlKCRsaW5lKSkgLWFuZCAoLW5vdCAkYWRkZWQpKSB7CiAgICAgICAgICAgICAgICAgICAgJG5ld0xpbmVzID0gJG5ld0xpbmVzWzAuLigkbmV3TGluZXMuQ291bnQgLSAyKV0KICAgICAgICAgICAgICAgICAgICAkbmV3TGluZXMgKz0gInRpdGxlcz1gIiREb2NrTmFtZWAiIgogICAgICAgICAgICAgICAgICAgICRuZXdMaW5lcyArPSAidXJscz1gIiREb2NrVXJsYCIiCiAgICAgICAgICAgICAgICAgICAgJG5ld0xpbmVzICs9ICRsaW5lCiAgICAgICAgICAgICAgICAgICAgJGFkZGVkID0gJHRydWUKICAgICAgICAgICAgICAgICAgICAkaW5TZWN0aW9uID0gJGZhbHNlCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KICAgICAgICAgICAgaWYgKC1ub3QgJGFkZGVkKSB7CiAgICAgICAgICAgICAgICAkbmV3TGluZXMgKz0gInRpdGxlcz1gIiREb2NrTmFtZWAiIgogICAgICAgICAgICAgICAgJG5ld0xpbmVzICs9ICJ1cmxzPWAiJERvY2tVcmxgIiIKICAgICAgICAgICAgfQogICAgICAgICAgICAkY29udGVudCA9ICRuZXdMaW5lcyAtam9pbiAiYHJgbiIKICAgICAgICAgICAgW1N5c3RlbS5JTy5GaWxlXTo6V3JpdGVBbGxUZXh0KCRmaWxlLCAkY29udGVudCwgW1N5c3RlbS5UZXh0LkVuY29kaW5nXTo6VVRGOCkKICAgICAgICB9CiAgICB9Cn0KClNldC1PYnNEb2NrQ29uZmlnICIkT2JzRGlyXGdsb2JhbC5pbmkiClNldC1PYnNEb2NrQ29uZmlnICIkT2JzRGlyXHVzZXIuaW5pIgpXcml0ZS1Ib3N0ICIgICAgW09LXSBTaW1wbGUgU3RyZWFtZXIgZG9jayByZWdpc3RlcmVkIChjb21wYXRpYmxlIHdpdGggT0JTIDI4LTMxKykuIiAtRm9yZWdyb3VuZENvbG9yIEdyZWVuCgojIDQuIEVuc3VyZSBPQlMgV2ViU29ja2V0IHNlcnZlciBpcyBlbmFibGVkIHdpdGggemVybyBhdXRoIG9uIGxvY2FsaG9zdAokd3NDb25maWdEaXIgPSAiJE9ic0RpclxwbHVnaW5fY29uZmlnXG9icy13ZWJzb2NrZXQiCiR3c0NvbmZpZ0ZpbGUgPSAiJHdzQ29uZmlnRGlyXGNvbmZpZy5qc29uIgppZiAoLW5vdCAoVGVzdC1QYXRoICR3c0NvbmZpZ0RpcikpIHsgTmV3LUl0ZW0gLUl0ZW1UeXBlIERpcmVjdG9yeSAtUGF0aCAkd3NDb25maWdEaXIgLUZvcmNlIHwgT3V0LU51bGwgfQppZiAoLW5vdCAoVGVzdC1QYXRoICR3c0NvbmZpZ0ZpbGUpKSB7CiAgICAkd3NDb25maWcgPSBAewogICAgICAgIGFsZXJ0c19lbmFibGVkID0gJGZhbHNlCiAgICAgICAgYXV0aF9yZXF1aXJlZCA9ICRmYWxzZQogICAgICAgIGZpcnN0X2xvYWQgPSAkZmFsc2UKICAgICAgICBzZXJ2ZXJfZW5hYmxlZCA9ICR0cnVlCiAgICAgICAgc2VydmVyX3Bhc3N3b3JkID0gIiIKICAgICAgICBzZXJ2ZXJfcG9ydCA9IDQ0NTUKICAgIH0gfCBDb252ZXJ0VG8tSnNvbgogICAgU2V0LUNvbnRlbnQgLVBhdGggJHdzQ29uZmlnRmlsZSAtVmFsdWUgJHdzQ29uZmlnIC1FbmNvZGluZyB1dGY4CiAgICBXcml0ZS1Ib3N0ICIgICAgW09LXSBJbml0aWFsaXplZCB6ZXJvLWF1dGggT0JTIFdlYlNvY2tldCBjb25maWd1cmF0aW9uIChwb3J0IDQ0NTUpLiIgLUZvcmVncm91bmRDb2xvciBHcmVlbgp9IGVsc2UgewogICAgdHJ5IHsKICAgICAgICAkd3NEYXRhID0gR2V0LUNvbnRlbnQgJHdzQ29uZmlnRmlsZSAtUmF3IHwgQ29udmVydEZyb20tSnNvbgogICAgICAgICRkaXJ0eSA9ICRmYWxzZQogICAgICAgIGlmICgtbm90ICR3c0RhdGEuc2VydmVyX2VuYWJsZWQpIHsgJHdzRGF0YS5zZXJ2ZXJfZW5hYmxlZCA9ICR0cnVlOyAkZGlydHkgPSAkdHJ1ZSB9CiAgICAgICAgaWYgKCR3c0RhdGEuYXV0aF9yZXF1aXJlZCkgeyAkd3NEYXRhLmF1dGhfcmVxdWlyZWQgPSAkZmFsc2U7ICRkaXJ0eSA9ICR0cnVlIH0KICAgICAgICBpZiAoJHdzRGF0YS5zZXJ2ZXJfcGFzc3dvcmQgLW5lICIiKSB7ICR3c0RhdGEuc2VydmVyX3Bhc3N3b3JkID0gIiI7ICRkaXJ0eSA9ICR0cnVlIH0KICAgICAgICBpZiAoJGRpcnR5KSB7CiAgICAgICAgICAgICR3c0RhdGEgfCBDb252ZXJ0VG8tSnNvbiB8IFNldC1Db250ZW50IC1QYXRoICR3c0NvbmZpZ0ZpbGUgLUVuY29kaW5nIHV0ZjgKICAgICAgICAgICAgV3JpdGUtSG9zdCAiICAgIFtPS10gQ29uZmlndXJlZCB6ZXJvLWF1dGggbG9jYWxob3N0IE9CUyBXZWJTb2NrZXQuIiAtRm9yZWdyb3VuZENvbG9yIEdyZWVuCiAgICAgICAgfQogICAgfSBjYXRjaCB7fQp9CgojIDUuIFNldCB1cCBOYXRpdmUgQmFja2dyb3VuZCBCcmlkZ2UgKFBvcnQgNDU0NTUpCiRCcmlkZ2VEaXIgPSAiJGVudjpMT0NBTEFQUERBVEFcU2ltcGxlU3RyZWFtZXIiCmlmICgtbm90IChUZXN0LVBhdGggJEJyaWRnZURpcikpIHsgTmV3LUl0ZW0gLUl0ZW1UeXBlIERpcmVjdG9yeSAtUGF0aCAkQnJpZGdlRGlyIC1Gb3JjZSB8IE91dC1OdWxsIH0KJEJyaWRnZVBzRmlsZSA9ICIkQnJpZGdlRGlyXGJyaWRnZS5wczEiCiRCcmlkZ2VWYnNGaWxlID0gIiRCcmlkZ2VEaXJcYnJpZGdlLnZicyIKCnRyeSB7CiAgICBHZXQtQ2ltSW5zdGFuY2UgV2luMzJfUHJvY2VzcyAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSB8IFdoZXJlLU9iamVjdCB7ICRfLkNvbW1hbmRMaW5lIC1saWtlICIqYnJpZGdlLnBzMSoiIH0gfCBGb3JFYWNoLU9iamVjdCB7IFN0b3AtUHJvY2VzcyAtSWQgJF8uUHJvY2Vzc0lkIC1Gb3JjZSAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSB9Cn0gY2F0Y2gge30KCiRCcmlkZ2VDb2RlID0gQCcKJGxpc3RlbmVyID0gTmV3LU9iamVjdCBTeXN0ZW0uTmV0Lkh0dHBMaXN0ZW5lcgp0cnkgewogICAgJGxpc3RlbmVyLlByZWZpeGVzLkFkZCgiaHR0cDovLzEyNy4wLjAuMTo0NTQ1NS8iKQogICAgJGxpc3RlbmVyLlN0YXJ0KCkKfSBjYXRjaCB7IGV4aXQgfQoKd2hpbGUgKCRsaXN0ZW5lci5Jc0xpc3RlbmluZykgewogICAgdHJ5IHsKICAgICAgICAkY3R4ID0gJGxpc3RlbmVyLkdldENvbnRleHQoKQogICAgICAgICRyZXEgPSAkY3R4LlJlcXVlc3QKICAgICAgICAkcmVzID0gJGN0eC5SZXNwb25zZQoKICAgICAgICAkcmVzLkFkZEhlYWRlcigiQWNjZXNzLUNvbnRyb2wtQWxsb3ctT3JpZ2luIiwgIioiKQogICAgICAgICRyZXMuQWRkSGVhZGVyKCJBY2Nlc3MtQ29udHJvbC1BbGxvdy1Qcml2YXRlLU5ldHdvcmsiLCAidHJ1ZSIpCiAgICAgICAgJHJlcy5BZGRIZWFkZXIoIkFjY2Vzcy1Db250cm9sLUFsbG93LU1ldGhvZHMiLCAiR0VULCBQT1NULCBPUFRJT05TIikKICAgICAgICAkcmVzLkFkZEhlYWRlcigiQWNjZXNzLUNvbnRyb2wtQWxsb3ctSGVhZGVycyIsICIqIikKCiAgICAgICAgaWYgKCRyZXEuSHR0cE1ldGhvZCAtZXEgIk9QVElPTlMiKSB7CiAgICAgICAgICAgICRyZXMuU3RhdHVzQ29kZSA9IDIwMAogICAgICAgICAgICAkcmVzLkNsb3NlKCkKICAgICAgICAgICAgY29udGludWUKICAgICAgICB9CgogICAgICAgICRwYXRoID0gJHJlcS5VcmwuQWJzb2x1dGVQYXRoCgogICAgICAgIGlmICgkcGF0aCAtZXEgIi9mb2N1cy1vYnMiKSB7CiAgICAgICAgICAgIHRyeSB7CiAgICAgICAgICAgICAgICAkd3MgPSBOZXctT2JqZWN0IC1Db21PYmplY3QgV1NjcmlwdC5TaGVsbAogICAgICAgICAgICAgICAgJHdzLkFwcEFjdGl2YXRlKCJPQlMiKSB8IE91dC1OdWxsCiAgICAgICAgICAgIH0gY2F0Y2gge30KICAgICAgICAgICAgJGJ1ZiA9IFtTeXN0ZW0uVGV4dC5FbmNvZGluZ106OlVURjguR2V0Qnl0ZXMoIntcYCJva1xgIjp0cnVlfSIpCiAgICAgICAgICAgICRyZXMuQ29udGVudFR5cGUgPSAiYXBwbGljYXRpb24vanNvbiIKICAgICAgICAgICAgJHJlcy5PdXRwdXRTdHJlYW0uV3JpdGUoJGJ1ZiwgMCwgJGJ1Zi5MZW5ndGgpCiAgICAgICAgICAgICRyZXMuQ2xvc2UoKQogICAgICAgICAgICBjb250aW51ZQogICAgICAgIH0KCiAgICAgICAgaWYgKCRwYXRoIC1lcSAiL29icy1jb25maWciKSB7CiAgICAgICAgICAgICRvYnNXcyA9ICIkZW52OkFQUERBVEFcb2JzLXN0dWRpb1xwbHVnaW5fY29uZmlnXG9icy13ZWJzb2NrZXRcY29uZmlnLmpzb24iCiAgICAgICAgICAgICRqc29uID0gInt9IgogICAgICAgICAgICBpZiAoVGVzdC1QYXRoICRvYnNXcykgeyAkanNvbiA9IFtTeXN0ZW0uSU8uRmlsZV06OlJlYWRBbGxUZXh0KCRvYnNXcywgW1N5c3RlbS5UZXh0LkVuY29kaW5nXTo6VVRGOCkgfQogICAgICAgICAgICAkYnVmID0gW1N5c3RlbS5UZXh0LkVuY29kaW5nXTo6VVRGOC5HZXRCeXRlcygkanNvbikKICAgICAgICAgICAgJHJlcy5Db250ZW50VHlwZSA9ICJhcHBsaWNhdGlvbi9qc29uIgogICAgICAgICAgICAkcmVzLk91dHB1dFN0cmVhbS5Xcml0ZSgkYnVmLCAwLCAkYnVmLkxlbmd0aCkKICAgICAgICAgICAgJHJlcy5DbG9zZSgpCiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgfQoKICAgICAgICBpZiAoJHBhdGggLWVxICIvc2F2ZS1kZXN0aW5hdGlvbnMiIC1hbmQgJHJlcS5IdHRwTWV0aG9kIC1lcSAiUE9TVCIpIHsKICAgICAgICAgICAgJGQgPSAiJGVudjpBUFBEQVRBXG9icy1zdHVkaW9ccGx1Z2luX2NvbmZpZ1xzaW1wbGUtc3RyZWFtZXIiCiAgICAgICAgICAgIGlmICgtbm90IChUZXN0LVBhdGggJGQpKSB7IE5ldy1JdGVtIC1JdGVtVHlwZSBEaXJlY3RvcnkgLVBhdGggJGQgLUZvcmNlIHwgT3V0LU51bGwgfQogICAgICAgICAgICAkcmVhZGVyID0gTmV3LU9iamVjdCBTeXN0ZW0uSU8uU3RyZWFtUmVhZGVyKCRyZXEuSW5wdXRTdHJlYW0sIFtTeXN0ZW0uVGV4dC5FbmNvZGluZ106OlVURjgpCiAgICAgICAgICAgICRib2R5ID0gJHJlYWRlci5SZWFkVG9FbmQoKQogICAgICAgICAgICBbU3lzdGVtLklPLkZpbGVdOjpXcml0ZUFsbFRleHQoIiRkXGNvbmZpZy5qc29uIiwgJGJvZHksIFtTeXN0ZW0uVGV4dC5FbmNvZGluZ106OlVURjgpCiAgICAgICAgICAgICRidWYgPSBbU3lzdGVtLlRleHQuRW5jb2RpbmddOjpVVEY4LkdldEJ5dGVzKCJ7XGAib2tcYCI6dHJ1ZX0iKQogICAgICAgICAgICAkcmVzLkNvbnRlbnRUeXBlID0gImFwcGxpY2F0aW9uL2pzb24iCiAgICAgICAgICAgICRyZXMuT3V0cHV0U3RyZWFtLldyaXRlKCRidWYsIDAsICRidWYuTGVuZ3RoKQogICAgICAgICAgICAkcmVzLkNsb3NlKCkKICAgICAgICAgICAgY29udGludWUKICAgICAgICB9CgogICAgICAgIGlmICgkcGF0aCAtZXEgIi9zYXZlLXNlY29uZGFyeSIpIHsKICAgICAgICAgICAgJGQgPSAiJGVudjpBUFBEQVRBXG9icy1zdHVkaW9ccGx1Z2luX2NvbmZpZ1xzaW1wbGUtc3RyZWFtZXIiCiAgICAgICAgICAgIGlmICgtbm90IChUZXN0LVBhdGggJGQpKSB7IE5ldy1JdGVtIC1JdGVtVHlwZSBEaXJlY3RvcnkgLVBhdGggJGQgLUZvcmNlIHwgT3V0LU51bGwgfQogICAgICAgICAgICAkZW4gPSBpZiAoJHJlcS5RdWVyeVN0cmluZ1siZW5hYmxlZCJdIC1lcSAiMSIpIHsgInRydWUiIH0gZWxzZSB7ICJmYWxzZSIgfQogICAgICAgICAgICAkc3J2ID0gJHJlcS5RdWVyeVN0cmluZ1sic2VydmVyIl0KICAgICAgICAgICAgJGsgPSAkcmVxLlF1ZXJ5U3RyaW5nWyJrZXkiXQogICAgICAgICAgICAkanNvbiA9ICJ7XGAiZW5hYmxlZFxgIjokZW4sXGAiYXJtZWRcYCI6JGVuLFxgInNlcnZlclxgIjpcYCIkc3J2XGAiLFxgImtleVxgIjpcYCIka1xgIn0iCiAgICAgICAgICAgIFtTeXN0ZW0uSU8uRmlsZV06OldyaXRlQWxsVGV4dCgiJGRcY29uZmlnLmpzb24iLCAkanNvbiwgW1N5c3RlbS5UZXh0LkVuY29kaW5nXTo6VVRGOCkKICAgICAgICB9CgogICAgICAgICRidWYgPSBbU3lzdGVtLlRleHQuRW5jb2RpbmddOjpVVEY4LkdldEJ5dGVzKCJ7XGAib2tcYCI6dHJ1ZX0iKQogICAgICAgICRyZXMuQ29udGVudFR5cGUgPSAiYXBwbGljYXRpb24vanNvbiIKICAgICAgICAkcmVzLk91dHB1dFN0cmVhbS5Xcml0ZSgkYnVmLCAwLCAkYnVmLkxlbmd0aCkKICAgICAgICAkcmVzLkNsb3NlKCkKICAgIH0gY2F0Y2ggewogICAgICAgIHRyeSB7ICRyZXMuQ2xvc2UoKSB9IGNhdGNoIHt9CiAgICB9Cn0KJ0AKW1N5c3RlbS5JTy5GaWxlXTo6V3JpdGVBbGxUZXh0KCRCcmlkZ2VQc0ZpbGUsICRCcmlkZ2VDb2RlLCBbU3lzdGVtLlRleHQuRW5jb2RpbmddOjpVVEY4KQoKIyBTaWxlbnQgVkJTIGxhdW5jaGVyCiRWYnNDb2RlID0gIlNldCBXc2hTaGVsbCA9IENyZWF0ZU9iamVjdChgIldTY3JpcHQuU2hlbGxgIilgcmBuV3NoU2hlbGwuUnVuIGAicG93ZXJzaGVsbC5leGUgLU5vUHJvZmlsZSAtRXhlY3V0aW9uUG9saWN5IEJ5cGFzcyAtV2luZG93U3R5bGUgSGlkZGVuIC1GaWxlIGAiIiIgJiBgIiRCcmlkZ2VQc0ZpbGVgIiAmIGAiIiJgLCAwLCBGYWxzZSIKW1N5c3RlbS5JTy5GaWxlXTo6V3JpdGVBbGxUZXh0KCRCcmlkZ2VWYnNGaWxlLCAkVmJzQ29kZSwgW1N5c3RlbS5UZXh0LkVuY29kaW5nXTo6VVRGOCkKCiMgU3RhcnR1cCBzaG9ydGN1dAokU3RhcnR1cERpciA9IFtFbnZpcm9ubWVudF06OkdldEZvbGRlclBhdGgoJ1N0YXJ0dXAnKQokV3NoU2hlbGwgPSBOZXctT2JqZWN0IC1Db21PYmplY3QgV1NjcmlwdC5TaGVsbAokU2hvcnRjdXQgPSAkV3NoU2hlbGwuQ3JlYXRlU2hvcnRjdXQoIiRTdGFydHVwRGlyXFNpbXBsZVN0cmVhbWVyQnJpZGdlLmxuayIpCiRTaG9ydGN1dC5UYXJnZXRQYXRoID0gIndzY3JpcHQuZXhlIgokU2hvcnRjdXQuQXJndW1lbnRzID0gImAiJEJyaWRnZVZic0ZpbGVgIiIKJFNob3J0Y3V0LldpbmRvd1N0eWxlID0gNwokU2hvcnRjdXQuU2F2ZSgpCgojIExhdW5jaCBicmlkZ2UKU3RhcnQtUHJvY2VzcyAid3NjcmlwdC5leGUiIC1Bcmd1bWVudExpc3QgImAiJEJyaWRnZVZic0ZpbGVgIiIKV3JpdGUtSG9zdCAiICAgIFtPS10gQmFja2dyb3VuZCBicmlkZ2UgaW5zdGFsbGVkIGFuZCBydW5uaW5nIG9uIHBvcnQgNDU0NTUuIiAtRm9yZWdyb3VuZENvbG9yIEdyZWVuCgpXcml0ZS1Ib3N0ICIiCldyaXRlLUhvc3QgIj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0iIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KV3JpdGUtSG9zdCAiICBbU1VDQ0VTU10gU2ltcGxlIFN0cmVhbWVyIHNldHVwIGNvbXBsZXRlZCEiIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KV3JpdGUtSG9zdCAiICBMYXVuY2ggT0JTIFN0dWRpbyBhbmQgY2hlY2sgRG9ja3MgLT4gU2ltcGxlIFN0cmVhbWVyLiIgLUZvcmVncm91bmRDb2xvciBHcmVlbgpXcml0ZS1Ib3N0ICI9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09IiAtRm9yZWdyb3VuZENvbG9yIEdyZWVuCg=='))"
+    set "PS_SCRIPT=%TEMP%\SimpleStreamer_install.ps1"
+)
+
 echo [*] Installing Simple Streamer Dock and WebSocket configuration...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {
-    $ErrorActionPreference = 'Stop'
-    
-    $ObsDir = \"$env:APPDATA\obs-studio\"
-    if (-not (Test-Path $ObsDir)) {
-        Write-Host '[!] OBS Studio config directory not found at:' $ObsDir -ForegroundColor Red
-        Write-Host '    Please run OBS Studio at least once and run setup again.' -ForegroundColor Yellow
-        exit 1
-    }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
+set "EXIT_CODE=%ERRORLEVEL%"
 
-    # Register Custom Browser Dock
-    $DockName = 'Simple Streamer'
-    $DockUrl = 'https://simple-streamer.bdjlmn.com/dock'
+if defined TEMP_PS (
+    del /f /q "%PS_SCRIPT%" 2>nul
+)
 
-    function Set-ObsDockConfig($file) {
-        if (-not (Test-Path $file)) { return }
-        $content = Get-Content $file -Raw -Encoding utf8
-        if ($content -notmatch '\[ExtraBrowserDocks\]') {
-            $content += \"`r`n[ExtraBrowserDocks]`r`n\"
-        }
-        if ($content -match 'ExtraBrowserDocks') {
-            if ($content -notmatch 'Simple Streamer') {
-                $lines = $content -split \"`r?`n\"
-                $newLines = @()
-                $inSection = $false
-                $added = $false
-                foreach ($line in $lines) {
-                    $newLines += $line
-                    if ($line -match '^\[ExtraBrowserDocks\]') {
-                        $inSection = $true
-                        continue
-                    }
-                    if ($inSection -and ($line -match '^\[.*\]' -or [string]::IsNullOrWhiteSpace($line)) -and (-not $added)) {
-                        $newLines = $newLines[0..($newLines.Count - 2)]
-                        $newLines += \"titles=\`\"$DockName\`\"\"
-                        $newLines += \"urls=\`\"$DockUrl\`\"\"
-                        $newLines += $line
-                        $added = $true
-                        $inSection = $false
-                    }
-                }
-                if (-not $added) {
-                    $newLines += \"titles=\`\"$DockName\`\"\"
-                    $newLines += \"urls=\`\"$DockUrl\`\"\"
-                }
-                $content = $newLines -join \"`r`n\"
-                [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
-            }
-        }
-    }
-
-    Set-ObsDockConfig \"$ObsDir\global.ini\"
-    Set-ObsDockConfig \"$ObsDir\user.ini\"
-    Write-Host '    [OK] Simple Streamer dock registered (compatible with OBS 28-31+).' -ForegroundColor Green
-
-    # Configure OBS WebSocket to enabled, zero-auth localhost
-    $wsConfigDir = \"$ObsDir\plugin_config\obs-websocket\"
-    $wsConfigFile = \"$wsConfigDir\config.json\"
-    if (-not (Test-Path $wsConfigDir)) { New-Item -ItemType Directory -Path $wsConfigDir -Force | Out-Null }
-    if (-not (Test-Path $wsConfigFile)) {
-        $wsConfig = @{
-            alerts_enabled = $false
-            auth_required = $false
-            first_load = $false
-            server_enabled = $true
-            server_password = ''
-            server_port = 4455
-        } | ConvertTo-Json
-        Set-Content -Path $wsConfigFile -Value $wsConfig -Encoding utf8
-        Write-Host '    [OK] Initialized zero-auth OBS WebSocket configuration (port 4455).' -ForegroundColor Green
-    } else {
-        try {
-            $wsData = Get-Content $wsConfigFile -Raw | ConvertFrom-Json
-            $dirty = $false
-            if (-not $wsData.server_enabled) { $wsData.server_enabled = $true; $dirty = $true }
-            if ($wsData.auth_required) { $wsData.auth_required = $false; $dirty = $true }
-            if ($wsData.server_password -ne '') { $wsData.server_password = ''; $dirty = $true }
-            if ($dirty) {
-                $wsData | ConvertTo-Json | Set-Content -Path $wsConfigFile -Encoding utf8
-                Write-Host '    [OK] Configured zero-auth localhost OBS WebSocket.' -ForegroundColor Green
-            }
-        } catch {}
-    }
-
-    # Setup Native Background Bridge (Port 45455)
-    $BridgeDir = \"$env:LOCALAPPDATA\SimpleStreamer\"
-    if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
-    $BridgePsFile = \"$BridgeDir\bridge.ps1\"
-    $BridgeVbsFile = \"$BridgeDir\bridge.vbs\"
-
-    try {
-        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*bridge.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    } catch {}
-
-    $BridgeCode = @'
-$listener = New-Object System.Net.HttpListener
-try {
-    $listener.Prefixes.Add(\"http://127.0.0.1:45455/\")
-    $listener.Start()
-} catch { exit }
-
-while ($listener.IsListening) {
-    try {
-        $ctx = $listener.GetContext()
-        $req = $ctx.Request
-        $res = $ctx.Response
-
-        $res.AddHeader(\"Access-Control-Allow-Origin\", \"*\")
-        $res.AddHeader(\"Access-Control-Allow-Private-Network\", \"true\")
-        $res.AddHeader(\"Access-Control-Allow-Methods\", \"GET, POST, OPTIONS\")
-        $res.AddHeader(\"Access-Control-Allow-Headers\", \"*\")
-
-        if ($req.HttpMethod -eq \"OPTIONS\") {
-            $res.StatusCode = 200
-            $res.Close()
-            continue
-        }
-
-        $path = $req.Url.AbsolutePath
-
-        if ($path -eq \"/focus-obs\") {
-            try {
-                $ws = New-Object -ComObject WScript.Shell
-                $ws.AppActivate(\"OBS\") | Out-Null
-            } catch {}
-            $buf = [System.Text.Encoding]::UTF8.GetBytes(\"{\`\"ok\`\":true}\")
-            $res.ContentType = \"application/json\"
-            $res.OutputStream.Write($buf, 0, $buf.Length)
-            $res.Close()
-            continue
-        }
-
-        if ($path -eq \"/obs-config\") {
-            $obsWs = \"$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json\"
-            $json = \"{}\"
-            if (Test-Path $obsWs) { $json = [System.IO.File]::ReadAllText($obsWs, [System.Text.Encoding]::UTF8) }
-            $buf = [System.Text.Encoding]::UTF8.GetBytes($json)
-            $res.ContentType = \"application/json\"
-            $res.OutputStream.Write($buf, 0, $buf.Length)
-            $res.Close()
-            continue
-        }
-
-        if ($path -eq \"/save-destinations\" -and $req.HttpMethod -eq \"POST\") {
-            $d = \"$env:APPDATA\obs-studio\plugin_config\simple-streamer\"
-            if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-            $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
-            $body = $reader.ReadToEnd()
-            [System.IO.File]::WriteAllText(\"$d\config.json\", $body, [System.Text.Encoding]::UTF8)
-            $buf = [System.Text.Encoding]::UTF8.GetBytes(\"{\`\"ok\`\":true}\")
-            $res.ContentType = \"application/json\"
-            $res.OutputStream.Write($buf, 0, $buf.Length)
-            $res.Close()
-            continue
-        }
-
-        if ($path -eq \"/save-secondary\") {
-            $d = \"$env:APPDATA\obs-studio\plugin_config\simple-streamer\"
-            if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-            $en = if ($req.QueryString[\"enabled\"] -eq \"1\") { \"true\" } else { \"false\" }
-            $srv = $req.QueryString[\"server\"]
-            $k = $req.QueryString[\"key\"]
-            $json = \"{\`\"enabled\`\":$en,\`\"armed\`\":$en,\`\"server\`\":\`\"$srv\`\",\`\"key\`\":\`\"$k\`\"}\"
-            [System.IO.File]::WriteAllText(\"$d\config.json\", $json, [System.Text.Encoding]::UTF8)
-        }
-
-        $buf = [System.Text.Encoding]::UTF8.GetBytes(\"{\`\"ok\`\":true}\")
-        $res.ContentType = \"application/json\"
-        $res.OutputStream.Write($buf, 0, $buf.Length)
-        $res.Close()
-    } catch {
-        try { $res.Close() } catch {}
-    }
-}
-'@
-    [System.IO.File]::WriteAllText($BridgePsFile, $BridgeCode, [System.Text.Encoding]::UTF8)
-
-    # Silent VBS launcher (runs bridge invisible without console window)
-    $VbsCode = \"Set WshShell = CreateObject(`\"WScript.Shell`\")`r`nWshShell.Run `\"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `\"\"\" & `\"$BridgePsFile`\" & `\"`\"\"`, 0, False\"
-    [System.IO.File]::WriteAllText($BridgeVbsFile, $VbsCode, [System.Text.Encoding]::UTF8)
-
-    # Startup shortcut to keep bridge running across reboots
-    $StartupDir = [Environment]::GetFolderPath('Startup')
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut(\"$StartupDir\SimpleStreamerBridge.lnk\")
-    $Shortcut.TargetPath = \"wscript.exe\"
-    $Shortcut.Arguments = \"`\"$BridgeVbsFile`\"\"
-    $Shortcut.WindowStyle = 7
-    $Shortcut.Save()
-
-    # Launch bridge now
-    Start-Process \"wscript.exe\" -ArgumentList \"`\"$BridgeVbsFile`\"\"
-    Write-Host '    [OK] Background bridge installed and running on port 45455.' -ForegroundColor Green
-}"
-
-if "%ERRORLEVEL%"=="0" (
+if "%EXIT_CODE%"=="0" (
     echo.
     echo =======================================================
     echo   [SUCCESS] Simple Streamer setup completed!
@@ -231,7 +54,7 @@ if "%ERRORLEVEL%"=="0" (
     echo =======================================================
 ) else (
     echo.
-    echo [ERROR] Setup encountered an issue. Please run as Administrator.
+    echo [ERROR] Setup encountered an issue (Code: %EXIT_CODE%).
 )
 
 pause
