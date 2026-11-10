@@ -111,7 +111,7 @@ if (Test-Path $localDll) {
     Write-Host "    [OK] Simple Streamer native plugin installed from local bundle." -ForegroundColor Green
 } else {
     try {
-        $dllUrl = "https://github.com/BDJLMN/simple-streamer/releases/latest/download/simple-streamer.dll"
+        $dllUrl = "https://github.com/midimahdi/simple-streamer/releases/latest/download/simple-streamer.dll"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $dllUrl -OutFile $installedDll -UseBasicParsing -TimeoutSec 15
         Write-Host "    [OK] Simple Streamer native plugin downloaded and installed." -ForegroundColor Green

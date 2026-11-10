@@ -150,11 +150,11 @@ jobs:
           $feExports | Set-Content fe.def -Encoding ascii
           lib /def:fe.def /machine:x64 /out:obs-libs/obs-frontend-api.lib
 
-      - name: Compile simple-streamer.dll (MSVC x64)
+      - name: Compile simple-streamer.dll (MSVC x64 Static CRT)
         shell: cmd
         run: |
           mkdir plugin\build\x64
-          cl.exe /LD /O2 /MD /W3 ^
+          cl.exe /LD /O2 /MT /W3 ^
             /I plugin\include ^
             /I plugin\include\libobs ^
             /I plugin\include\frontend-api ^
@@ -163,6 +163,11 @@ jobs:
             /link /LIBPATH:obs-libs obs.lib obs-frontend-api.lib ^
             /OUT:plugin\build\x64\simple-streamer.dll
 
+      - name: Verify DLL Dependencies
+        shell: cmd
+        run: |
+          dumpbin /DEPENDENTS plugin\build\x64\simple-streamer.dll
+
       - name: Package Windows Release Bundle
         shell: pwsh
         run: |
@@ -170,10 +175,46 @@ jobs:
           Copy-Item -Path "installer\windows\*" -Destination "dist\SimpleStreamer" -Recurse
           New-Item -ItemType Directory -Path "dist\SimpleStreamer\plugin\64bit" -Force | Out-Null
           Copy-Item -Path "plugin\build\x64\simple-streamer.dll" -Destination "dist\SimpleStreamer\plugin\64bit\"
+          Copy-Item -Path "plugin\build\x64\simple-streamer.dll" -Destination "dist\SimpleStreamer\"
           Compress-Archive -Path "dist\SimpleStreamer\*" -DestinationPath "SimpleStreamer-Windows-x64.zip"
 
       - name: Upload Windows x64 Artifact
         uses: actions/upload-artifact@v4
         with:
           name: simple-streamer-windows-x64
-          path: SimpleStreamer-Windows-x64.zip
+          path: |
+            SimpleStreamer-Windows-x64.zip
+            plugin/build/x64/simple-streamer.dll
+
+  release:
+    name: Publish Continuous Release
+    needs: [build-macos, build-windows]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: simple-streamer-macos-universal
+          path: release-assets
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: simple-streamer-windows-x64
+          path: release-assets
+
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Simple Streamer Latest Build
+          body: Continuous build of Simple Streamer native plugins and Windows installer bundle.
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
