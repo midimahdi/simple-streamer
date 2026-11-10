@@ -10,7 +10,7 @@ on:
 jobs:
   build-macos:
     name: Build macOS Universal Plugin (arm64 + x86_64)
-    runs-on: macos-14
+    runs-on: macos-13
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -188,18 +188,12 @@ jobs:
 
   release:
     name: Publish Continuous Release
-    needs: [build-macos, build-windows]
+    needs: [build-windows]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download macOS Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: simple-streamer-macos-universal
-          path: release-assets
-
       - name: Download Windows Artifact
         uses: actions/download-artifact@v4
         with:
