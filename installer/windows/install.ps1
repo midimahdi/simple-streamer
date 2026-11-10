@@ -99,7 +99,35 @@ if (-not (Test-Path $wsConfigFile)) {
     } catch {}
 }
 
-# 5. Set up Native Background Bridge (Port 45455)
+# 5. Install Native Multi-Output Plugin (simple-streamer.dll)
+$UserPluginDir = "$ObsDir\plugins\simple-streamer\bin\64bit"
+if (-not (Test-Path $UserPluginDir)) { New-Item -ItemType Directory -Path $UserPluginDir -Force | Out-Null }
+
+$localDll = Join-Path $PSScriptRoot "plugin\64bit\simple-streamer.dll"
+$installedDll = "$UserPluginDir\simple-streamer.dll"
+
+if (Test-Path $localDll) {
+    Copy-Item -Path $localDll -Destination $installedDll -Force
+    Write-Host "    [OK] Simple Streamer native plugin installed from local bundle." -ForegroundColor Green
+} else {
+    try {
+        $dllUrl = "https://github.com/BDJLMN/simple-streamer/releases/latest/download/simple-streamer.dll"
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $dllUrl -OutFile $installedDll -UseBasicParsing -TimeoutSec 15
+        Write-Host "    [OK] Simple Streamer native plugin downloaded and installed." -ForegroundColor Green
+    } catch {
+        Write-Host "    [!] Could not download native plugin binary. Multi-streaming will fall back to bridge." -ForegroundColor Yellow
+    }
+}
+
+$ProgFilesPluginDir = "C:\Program Files\obs-studio\obs-plugins\64bit"
+if ((Test-Path $installedDll) -and (Test-Path $ProgFilesPluginDir)) {
+    try {
+        Copy-Item -Path $installedDll -Destination "$ProgFilesPluginDir\simple-streamer.dll" -Force -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+# 6. Set up Native Background Bridge (Port 45455)
 $BridgeDir = "$env:LOCALAPPDATA\SimpleStreamer"
 if (-not (Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
 $BridgePsFile = "$BridgeDir\bridge.ps1"

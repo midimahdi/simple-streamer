@@ -171,3 +171,21 @@ In OBS Studio on Windows, clicking "+ Add Platform" (YouTube, Facebook, Twitch, 
   - Implemented `/open` using native Windows `Start-Process $targetUrl` with fallback to `[System.Diagnostics.Process]::Start`.
   - Ensures the user's default Windows browser (Chrome, Edge, Firefox) immediately pops open with the OAuth authentication window.
   - Committed and pushed in `51c48c5`.
+
+---
+
+## 10. Secondary Destinations (YouTube) Failed Live Stream Due to Missing Native Plugin Binary (`simple-streamer.dll`)
+
+### What Happened
+During a live broadcast test with both Facebook and YouTube selected, Facebook started streaming successfully, but YouTube failed. Clicking retry also failed.
+
+### Root Cause
+- Simple Streamer uses a dual-engine architecture:
+  1. The **Primary Destination** (in this test, Facebook) is injected directly into OBS core as the main streaming service (`obs_frontend_streaming_start`).
+  2. Any **Secondary Destinations** (in this test, YouTube) are managed in real time by the native OBS C plugin (`simple-streamer.dll`), which hooks `OBS_FRONTEND_EVENT_STREAMING_STARTED` and spawns independent RTMP outputs from OBS encoders.
+- `simple-streamer.dll` had never been compiled for Windows in CI or bundled in `installer/windows/install.ps1`. When OBS started streaming, the plugin was missing, so no secondary output was ever created for YouTube.
+
+### Permanent Patch Implemented
+1. **Automated CI Build**: Updated `.github/workflows/build-plugin.yml` to extract symbol tables via `dumpbin` and generate MSVC import libraries (`obs.lib`, `obs-frontend-api.lib`), compiling a production `simple-streamer.dll` on Windows runners.
+2. **Installer Automation**: Updated `installer/windows/install.ps1` to deploy `simple-streamer.dll` into `%APPDATA%\obs-studio\plugins\simple-streamer\bin\64bit\` and `C:\Program Files\obs-studio\obs-plugins\64bit\`.
+3. **Live Machine Deployed**: Transferred and installed `simple-streamer.dll` into OBS on the remote Windows machine.
