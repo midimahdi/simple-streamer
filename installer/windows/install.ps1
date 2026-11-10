@@ -192,9 +192,9 @@ while ($listener.IsListening) {
 '@
 [System.IO.File]::WriteAllText($BridgePsFile, $BridgeCode, [System.Text.Encoding]::UTF8)
 
-# Silent VBS launcher
-$VbsCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `""" & `"$BridgePsFile`" & `"""`, 0, False"
-[System.IO.File]::WriteAllText($BridgeVbsFile, $VbsCode, [System.Text.Encoding]::UTF8)
+# Silent VBS launcher (saved as ASCII/ANSI for WSH compatibility)
+$VbsCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"`"$BridgePsFile`"`"`, 0, False"
+[System.IO.File]::WriteAllText($BridgeVbsFile, $VbsCode, [System.Text.Encoding]::ASCII)
 
 # Startup shortcut
 $StartupDir = [Environment]::GetFolderPath('Startup')
@@ -205,8 +205,8 @@ $Shortcut.Arguments = "`"$BridgeVbsFile`""
 $Shortcut.WindowStyle = 7
 $Shortcut.Save()
 
-# Launch bridge
-Start-Process "wscript.exe" -ArgumentList "`"$BridgeVbsFile`""
+# Launch bridge directly without popups
+Start-Process "wscript.exe" -ArgumentList "`"$BridgeVbsFile`"" -ErrorAction SilentlyContinue
 Write-Host "    [OK] Background bridge installed and running on port 45455." -ForegroundColor Green
 
 Write-Host ""
