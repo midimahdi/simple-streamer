@@ -1,4 +1,4 @@
-name: Build OBS Plugin
+name: Build Cross-Platform OBS Plugins
 
 on:
   push:
@@ -9,52 +9,144 @@ on:
 
 jobs:
   build-macos:
-    name: Build macOS Plugin (.plugin)
+    name: Build macOS Universal Plugin (arm64 + x86_64)
     runs-on: macos-14
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install OBS Studio (macOS)
+      - name: Download OBS Studio (Apple Silicon)
         run: |
-          brew install --cask obs
+          curl -sL https://github.com/obsproject/obs-studio/releases/download/30.2.3/OBS-Studio-30.2.3-macOS-Apple.dmg -o obs-apple.dmg
+          hdiutil attach obs-apple.dmg -mountpoint /Volumes/OBS_ARM
+          mkdir -p /tmp/obs-arm
+          cp -R /Volumes/OBS_ARM/OBS.app /tmp/obs-arm/
+          hdiutil detach /Volumes/OBS_ARM
 
-      - name: Build Plugin Bundle
+      - name: Download OBS Studio (Intel x86_64)
         run: |
-          chmod +x plugin/build-mac.sh
-          ./plugin/build-mac.sh
+          curl -sL https://github.com/obsproject/obs-studio/releases/download/30.2.3/OBS-Studio-30.2.3-macOS-Intel.dmg -o obs-intel.dmg
+          hdiutil attach obs-intel.dmg -mountpoint /Volumes/OBS_INTEL
+          mkdir -p /tmp/obs-intel
+          cp -R /Volumes/OBS_INTEL/OBS.app /tmp/obs-intel/
+          hdiutil detach /Volumes/OBS_INTEL
 
-      - name: Archive macOS Plugin
+      - name: Compile Universal Plugin Binary
+        run: |
+          mkdir -p plugin/build/arm64 plugin/build/x86_64 plugin/build/universal/Contents/MacOS
+
+          # Compile arm64
+          clang -bundle -fPIC -O3 \
+            -arch arm64 \
+            -Iplugin/include \
+            -Iplugin/include/libobs \
+            -Iplugin/include/frontend-api \
+            -F/tmp/obs-arm/OBS.app/Contents/Frameworks \
+            -framework libobs \
+            /tmp/obs-arm/OBS.app/Contents/Frameworks/obs-frontend-api.dylib \
+            -rpath @loader_path/../../.. \
+            -rpath /Applications/OBS.app/Contents/Frameworks \
+            plugin/src/simple-streamer.c \
+            -o plugin/build/arm64/simple-streamer
+
+          # Compile x86_64
+          clang -bundle -fPIC -O3 \
+            -arch x86_64 \
+            -Iplugin/include \
+            -Iplugin/include/libobs \
+            -Iplugin/include/frontend-api \
+            -F/tmp/obs-intel/OBS.app/Contents/Frameworks \
+            -framework libobs \
+            /tmp/obs-intel/OBS.app/Contents/Frameworks/obs-frontend-api.dylib \
+            -rpath @loader_path/../../.. \
+            -rpath /Applications/OBS.app/Contents/Frameworks \
+            plugin/src/simple-streamer.c \
+            -o plugin/build/x86_64/simple-streamer
+
+          # Combine into Universal Binary (Fat)
+          lipo -create -output plugin/build/universal/Contents/MacOS/simple-streamer \
+            plugin/build/arm64/simple-streamer \
+            plugin/build/x86_64/simple-streamer
+
+          lipo -info plugin/build/universal/Contents/MacOS/simple-streamer
+
+          # Copy Info.plist
+          cp plugin/build/simple-streamer.plugin/Contents/Info.plist plugin/build/universal/Contents/Info.plist 2>/dev/null || cat << 'PLIST' > plugin/build/universal/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>simple-streamer</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.bdjlmn.simple-streamer.plugin</string>
+            <key>CFBundleName</key>
+            <string>Simple Streamer</string>
+            <key>CFBundlePackageType</key>
+            <string>BNDL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>2.2.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+          </dict>
+          </plist>
+          PLIST
+
+          mv plugin/build/universal plugin/build/simple-streamer.plugin
+
+      - name: Archive macOS Universal Plugin
         run: |
           cd plugin/build
-          tar -czvf simple-streamer-macos.tar.gz simple-streamer.plugin
+          tar -czvf simple-streamer-macos-universal.tar.gz simple-streamer.plugin
 
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simple-streamer-macos
-          path: plugin/build/simple-streamer-macos.tar.gz
+          name: simple-streamer-macos-universal
+          path: plugin/build/simple-streamer-macos-universal.tar.gz
 
   build-windows:
-    name: Package Windows Installer
+    name: Build Windows x64 Native DLL & Installer
     runs-on: windows-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Verify PowerShell Installer Syntax
+      - name: Download OBS Studio x64 SDK
         shell: pwsh
         run: |
-          $content = Get-Content installer/windows/install.ps1 -Raw
-          [System.Management.Automation.Language.Parser]::ParseInput($content, [ref]$null, [ref]$null)
+          Invoke-WebRequest -Uri "https://github.com/obsproject/obs-studio/releases/download/30.2.3/OBS-Studio-30.2.3-Windows.zip" -OutFile "obs-win.zip"
+          Expand-Archive -Path "obs-win.zip" -DestinationPath "obs-win"
 
-      - name: Archive Windows Installer
+      - name: Set up MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compile simple-streamer.dll (MSVC x64)
+        shell: cmd
+        run: |
+          mkdir plugin\build\x64
+          cl.exe /LD /O2 /MD /W3 ^
+            /I plugin\include ^
+            /I plugin\include\libobs ^
+            /I plugin\include\frontend-api ^
+            /I obs-win\bin\64bit ^
+            plugin\src\simple-streamer.c ^
+            /link /LIBPATH:obs-win\bin\64bit obs.lib obs-frontend-api.lib ^
+            /OUT:plugin\build\x64\simple-streamer.dll
+
+      - name: Package Windows Release Bundle
         shell: pwsh
         run: |
-          Compress-Archive -Path installer/windows/* -DestinationPath SimpleStreamer-Windows.zip
+          New-Item -ItemType Directory -Path "dist\SimpleStreamer" -Force | Out-Null
+          Copy-Item -Path "installer\windows\*" -Destination "dist\SimpleStreamer" -Recurse
+          New-Item -ItemType Directory -Path "dist\SimpleStreamer\plugin\64bit" -Force | Out-Null
+          Copy-Item -Path "plugin\build\x64\simple-streamer.dll" -Destination "dist\SimpleStreamer\plugin\64bit\"
+          Compress-Archive -Path "dist\SimpleStreamer\*" -DestinationPath "SimpleStreamer-Windows-x64.zip"
 
-      - name: Upload Windows Artifact
+      - name: Upload Windows x64 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simple-streamer-windows
-          path: SimpleStreamer-Windows.zip
+          name: simple-streamer-windows-x64
+          path: SimpleStreamer-Windows-x64.zip
