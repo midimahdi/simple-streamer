@@ -1,0 +1,155 @@
+# Simple Streamer — Incident & Post-Mortem Master Log
+
+**Session Date:** 2026-11-10  
+**Target Environments:** macOS (Apple Silicon arm64) & Windows 10 (OBS Studio 29.1.3 x64)
+
+This document tracks every single bug, crash, deadlock, permission block, and silent failure encountered across this session, its root cause, and the permanent architectural patch required for zero-friction future installations.
+
+---
+
+## 1. Native OBS UI Freeze & Output Deadlock (Critical Broadcast Failure)
+
+### What Happened
+During an active live broadcast, the OBS Studio interface completely froze on macOS, while existing RTMP streams on primary targets continued running in the background.
+
+### Root Cause
+- A secondary target (Kick) received a malformed RTMP URL lacking `/app`.
+- Kick's ingestion rejected the socket handshake, triggering an immediate `obs_output_signal_stop` inside `libobs`.
+- Concurrently, `rtmp_stream_destroy` invoked `pthread_join(stream->connect_thread)` on Thread 1 (the main UI Qt thread) while `connect_thread` was awaiting lock release in `__ulock_wait`.
+- **Result:** Permanent deadlock on the main UI thread. OBS remained broadcasting on already-connected sockets, but the user interface completely froze.
+
+### Permanent Patch Implemented
+- In `plugin/src/simple-streamer.c`:
+  - Hooked into `obs_output_signal_handler` cleanly without calling blocking forced teardowns.
+  - Replaced blocking stops with non-blocking graceful teardown flags.
+  - Added target destination collision checks comparing secondary server URLs against the primary stream output before spawning instances.
+
+---
+
+## 2. Accidental Plugin Firing & Dual-Start Collision
+
+### What Happened
+Starting a stream via the native OBS "Start Streaming" button or an external multistream plugin (e.g., Aitum) inadvertently triggered Simple Streamer's secondary RTMP outputs.
+
+### Root Cause
+- The native plugin listened to `OBS_FRONTEND_EVENT_STREAMING_STARTED`.
+- Whenever *any* stream was started in OBS (even outside Simple Streamer's dock), the plugin assumed it was supposed to start all configured secondary outputs.
+
+### Permanent Patch Implemented
+- **Armed Protocol:** Added an `armed` boolean in `config.json`.
+- The dock sets `"armed": true` only when the user explicitly clicks **"GO LIVE"** in the Simple Streamer dock.
+- When OBS streaming begins, the native C plugin inspects `armed`:
+  - If `armed == true`: proceeds and immediately clears `armed` back to `false`.
+  - If `armed == false`: ignores the event completely, preventing dual-start collisions.
+
+---
+
+## 3. Google OAuth Verification Rejection ("Home Page Behind Login")
+
+### What Happened
+Google Trust & Safety rejected OAuth branding verification with:
+> *"Your home page is behind a login page. We were unable to confirm your app's compliance."*
+
+### Root Cause
+- The root URL `https://simple-streamer.bdjlmn.com/` redirected directly into the OBS dock UI, which presented operational controls rather than a public, unauthenticated compliance landing page explaining scopes.
+
+### Permanent Patch Implemented
+- Rewrote `cloudflare-site/src/index.ts`:
+  - Standard web browsers and crawlers hitting `/` receive an unauthenticated public home page containing full app disclosures, YouTube scope justifications, privacy policy, and terms of service.
+  - Only requests containing `/dock`, `/app`, `?dock=1`, or an `OBS/` User-Agent proxy through to the OBS dock interface.
+  - Deployed live to Cloudflare Worker.
+
+---
+
+## 4. Dock Action Button UX & Ambiguous Green Indicators
+
+### What Happened
+The "GO LIVE" button was clickable even when OBS WebSocket was disconnected or credentials had errors, leading to unexpected error popups right before broadcasting.
+
+### Root Cause
+- UI lacked a strict "fail-fast" state machine; the button defaulted to active while background reconnection was still pending.
+
+### Permanent Patch Implemented
+- Removed all ambiguous green status badges.
+- Implemented `updateActionBtnState()` in `dock/app.js`:
+  - When WebSocket is connecting: `disabled = true`, label `CONNECTING TO OBS...`
+  - When no targets are enabled: `disabled = true`, label `SELECT DESTINATION FIRST`
+  - When credentials fail validation: `disabled = true`, label `DESTINATION ERROR - CHECK SETTINGS`
+  - Only when all systems are green: `disabled = false`, label `▶ GO LIVE`.
+
+---
+
+## 5. Windows Shell String Parsing & Command Line Length Limit
+
+### What Happened
+Running `SimpleStreamer-Setup.bat` on Windows produced:
+- `Accolade fermante « } » manquante` (Missing end curly brace)
+- `'$ErrorActionPreference' n’est pas reconnu...`
+- `La ligne entrée est trop longue` (Input line too long)
+
+### Root Cause
+- `cmd.exe` has an 8,191-character maximum command buffer.
+- Multi-line PowerShell blocks wrapped inside `powershell -Command "& { ... }"` get corrupted by DOS character parsing (e.g. `&`, `<`, `>`, parentheses).
+- Attempting to base64-encode the script directly into the `.bat` file exceeded `cmd.exe` line length limits.
+
+### Permanent Patch Implemented
+- Replaced monolithic batch commands with a clean 30-line launcher.
+- The `.bat` downloads or streams `install.ps1` into a temporary file and runs it strictly via `-File "%PS1%"`, completely bypassing `cmd.exe` length limits and escaping bugs.
+
+---
+
+## 6. Windows Script Host VBScript Charset Failures (`800A0408` & `800A0409`)
+
+### What Happened
+Running the background bridge installer triggered two successive modal error dialogs from Windows Script Host (`wscript.exe`):
+1. **Code `800A0408`** (`Invalid Character / حرف غير صالح`) at Line 1, Char 1.
+2. **Code `800A0409`** (`Unterminated String Constant / ثابت سلسلة غير منتهي`) at Line 2, Char 157.
+
+### Root Cause
+1. PowerShell wrote `bridge.vbs` using default `[System.Text.Encoding]::UTF8`, which writes a 3-byte Byte Order Mark (BOM: `0xEF, 0xBB, 0xBF`). Classic Windows Script Host does not support UTF-8 BOM.
+2. Escaping nested double-quotes inside VBScript string literals to pass file paths with spaces into `WScript.Shell.Run` caused VBScript's string tokenizer to fail.
+
+### Permanent Patch Implemented
+- **Eliminated VBScript and `wscript.exe` entirely.**
+- Background process execution and startup persistence now use native PowerShell features:
+  - Startup shortcut points directly to `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File bridge.ps1`.
+  - Process launch uses native `Start-Process` or `schtasks` with `-WindowStyle Hidden`.
+
+---
+
+## 7. OBS 28 vs 29 Config Architecture Divergence (`global.ini` vs `config.json`)
+
+### What Happened
+Even after `config.json` was set to zero-auth, OBS Studio 29 continuously rejected WebSocket connections with error code `1000`/`4009`, leaving the dock stuck on *"Ensure OBS is running"*.
+
+### Root Cause
+- In OBS 28 and 29.x, WebSocket server settings (password and port) are stored and managed in **`%APPDATA%\obs-studio\global.ini`** under the section `[OBSWebSocket]`:
+  ```ini
+  [OBSWebSocket]
+  AuthRequired=true
+  ServerPassword=CgMcmebVWN3D7pco
+  ServerPort=4455
+  ```
+- The bridge script was only reading `%APPDATA%\obs-studio\plugin_config\obs-websocket\config.json` (introduced in OBS 30+), which had an empty password.
+- Because the dock received `password: ""`, it attempted unauthenticated authentication against an OBS server that required `CgMcmebVWN3D7pco`, causing silent rejection on every connection attempt.
+
+### Permanent Patch Implemented
+- Updated `installer/windows/bridge.ps1`:
+  - Dynamically checks `global.ini` first for `[OBSWebSocket]` credentials (`ServerPassword` and `ServerPort`).
+  - Falls back to `plugin_config\obs-websocket\config.json`.
+  - Seamlessly supplies the active password to the browser dock via `http://127.0.0.1:45455/obs-config`.
+  - Verified live: WebSocket handshake instantly completed with `op: 2 (Identified)`.
+
+---
+
+## 8. Truncated Script File in Downloads Directory (`Writ` Error)
+
+### What Happened
+Running the installer gave:
+`Writ : Le terme «Writ» n'est pas reconnu... au caractère install.ps1:216`
+
+### Root Cause
+- The user had a stale or incomplete copy of `install.ps1` previously downloaded into `Downloads\windows\`, which cut off mid-word on the last line (`Writ` instead of `Write-Host`).
+
+### Permanent Patch Implemented
+- `SimpleStreamer-Setup.bat` always fetches the latest, complete script from GitHub directly into `%TEMP%` before execution, ensuring stale local files never run.
