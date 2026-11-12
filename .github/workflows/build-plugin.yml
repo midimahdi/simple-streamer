@@ -163,10 +163,24 @@ jobs:
             /link /LIBPATH:obs-libs obs.lib obs-frontend-api.lib ^
             /OUT:plugin\build\x64\simple-streamer.dll
 
-      - name: Verify DLL Dependencies
-        shell: cmd
+      - name: Verify & Assert Zero External Runtime Dependencies
+        shell: pwsh
         run: |
-          dumpbin /DEPENDENTS plugin\build\x64\simple-streamer.dll
+          $deps = (dumpbin /DEPENDENTS plugin\build\x64\simple-streamer.dll | Out-String)
+          Write-Host $deps
+          if ($deps -match "vcruntime" -or $deps -match "msvcp") {
+            Write-Error "FATAL: DLL links against dynamic MSVC runtime! Must compile with /MT."
+            exit 1
+          }
+          if ($deps -match "fe\.dll") {
+            Write-Error "FATAL: DLL imports fe.dll instead of obs-frontend-api.dll! Check .def file LIBRARY declaration."
+            exit 1
+          }
+          if (-not ($deps -match "obs\.dll") -or -not ($deps -match "obs-frontend-api\.dll")) {
+            Write-Error "FATAL: DLL is missing expected OBS core or frontend-api imports!"
+            exit 1
+          }
+          Write-Host "SUCCESS: Import table strictly verified (obs.dll, obs-frontend-api.dll, KERNEL32.dll only)."
 
       - name: Package Windows Release Bundle
         shell: pwsh
