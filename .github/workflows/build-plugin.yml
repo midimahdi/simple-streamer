@@ -130,7 +130,7 @@ jobs:
           
           # Generate obs.lib from obs-win/bin/64bit/obs.dll
           dumpbin /EXPORTS obs-win/bin/64bit/obs.dll > obs.exports
-          $obsExports = @("EXPORTS")
+          $obsExports = @("LIBRARY obs.dll", "EXPORTS")
           Get-Content obs.exports | ForEach-Object {
             if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+([^\s]+)') {
               $obsExports += $matches[1]
@@ -141,14 +141,14 @@ jobs:
 
           # Generate obs-frontend-api.lib
           dumpbin /EXPORTS obs-win/bin/64bit/obs-frontend-api.dll > fe.exports
-          $feExports = @("EXPORTS")
+          $feExports = @("LIBRARY obs-frontend-api.dll", "EXPORTS")
           Get-Content fe.exports | ForEach-Object {
             if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+([^\s]+)') {
               $feExports += $matches[1]
             }
           }
-          $feExports | Set-Content fe.def -Encoding ascii
-          lib /def:fe.def /machine:x64 /out:obs-libs/obs-frontend-api.lib
+          $feExports | Set-Content obs-frontend-api.def -Encoding ascii
+          lib /def:obs-frontend-api.def /machine:x64 /out:obs-libs/obs-frontend-api.lib
 
       - name: Compile simple-streamer.dll (MSVC x64 Static CRT)
         shell: cmd
