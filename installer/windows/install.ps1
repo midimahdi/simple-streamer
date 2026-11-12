@@ -239,6 +239,13 @@ while ($listener.IsListening) {
             if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
             $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
             $body = $reader.ReadToEnd()
+            try {
+                $obj = $body | ConvertFrom-Json
+                if ($null -eq $obj.armed -and $obj.outputs -and $obj.outputs.Count -gt 0) {
+                    $obj | Add-Member -NotePropertyName "armed" -NotePropertyValue $true -Force
+                    $body = $obj | ConvertTo-Json -Depth 10 -Compress
+                }
+            } catch {}
             [System.IO.File]::WriteAllText("$d\config.json", $body, [System.Text.Encoding]::UTF8)
             $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"ok\`":true}")
             $res.ContentType = "application/json"
