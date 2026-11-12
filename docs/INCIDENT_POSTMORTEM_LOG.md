@@ -206,3 +206,21 @@ When OBS Studio restarted with `simple-streamer.dll`, the OBS log showed:
 - Updated `.github/workflows/build-plugin.yml` compiler flag from `/MD` to `/MT` (Static Multithreaded CRT).
 - Verified with `dumpbin /DEPENDENTS` that `simple-streamer.dll` now imports ONLY `obs.dll` and `KERNEL32.dll` — zero external runtime requirements.
 - Configured automated continuous GitHub Releases publishing the standalone `SimpleStreamer-Windows-x64.zip` package to `https://github.com/midimahdi/simple-streamer/releases/tag/latest`.
+
+---
+
+## 12. Secondary Stream Skipped in Multi-Destination Due to Un-armed Payload
+
+### What Happened
+Single destination to YouTube succeeded. When both Facebook and YouTube were selected, Facebook went live (primary output), but YouTube (secondary output via native plugin) did not start. OBS log recorded:
+`[SimpleStreamer] Stream started independently (OBS button/other). Secondary outputs not armed (skipping).`
+
+### Root Cause
+- The production dock frontend currently hosted on Cloud Run had not yet been redeployed with the `"armed": true` protocol introduced in commit `6b10543`.
+- When the dock called POST `/save-destinations`, the JSON payload contained `outputs` but lacked `"armed": true`.
+- The native plugin's guard check (`bool armed = obs_data_get_bool(cfg, "armed");`) evaluated to `false`, treating the stream start as an external/unarmed trigger and aborting secondary outputs.
+
+### Permanent Patch Implemented
+- Updated `bridge.ps1` (and `installer/windows/install.ps1`) to automatically inspect incoming POST `/save-destinations` payloads: if `outputs` is present and non-empty and `armed` was not explicitly provided, the bridge automatically sets `"armed": true`.
+- Hot-reloaded `SimpleStreamerBridge` on the production Windows streaming PC.
+
