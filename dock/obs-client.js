@@ -107,7 +107,7 @@ export class ObsWebSocketClient {
               op: 1,
               d: {
                 rpcVersion: 1,
-                eventSubscriptions: 33, // General + Outputs
+                eventSubscriptions: 1023, // General, Scenes, Outputs, Vendors (CustomEvent)
               },
             };
             if (authResponse) {

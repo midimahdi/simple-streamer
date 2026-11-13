@@ -11,13 +11,17 @@ set "SCRIPT_DIR=%~dp0"
 set "LOCAL_PS1=%SCRIPT_DIR%install.ps1"
 set "TARGET_PS1=%LOCAL_PS1%"
 
-:: Always pull the latest installer from GitHub if network is available
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object Net.WebClient).DownloadFile('https://raw.githubusercontent.com/midimahdi/simple-streamer/main/installer/windows/install.ps1', '%TEMP%\SimpleStreamer_install.ps1'); exit 0 } catch { exit 1 }" >nul 2>&1
-
-if exist "%TEMP%\SimpleStreamer_install.ps1" (
-    set "TARGET_PS1=%TEMP%\SimpleStreamer_install.ps1"
+:: Check for local install.ps1 first before falling back to GitHub download
+if exist "%LOCAL_PS1%" (
+    echo [*] Found local installer: %LOCAL_PS1%
+    set "TARGET_PS1=%LOCAL_PS1%"
 ) else (
-    if not exist "%LOCAL_PS1%" (
+    echo [*] Local installer not found. Downloading latest installer from GitHub...
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object Net.WebClient).DownloadFile('https://raw.githubusercontent.com/midimahdi/simple-streamer/main/installer/windows/install.ps1', '%TEMP%\SimpleStreamer_install.ps1'); exit 0 } catch { exit 1 }" >nul 2>&1
+
+    if exist "%TEMP%\SimpleStreamer_install.ps1" (
+        set "TARGET_PS1=%TEMP%\SimpleStreamer_install.ps1"
+    ) else (
         echo [ERROR] Could not find or download install.ps1.
         pause
         exit /b 1

@@ -137,8 +137,8 @@ For optimal multi-destination streaming to all 4 platforms simultaneously:
 
 ### Common Questions
 
-#### "What is the URL / Key shown in OBS Settings → Stream?"
-What is shown in OBS `Settings → Stream` is whatever was last written by Simple Streamer during the previous session. You do not need to edit it. When you click **GO LIVE**, Simple Streamer dynamically overwrites it with the active broadcast key.
+#### "What happens to my personal stream key in OBS Settings → Stream?"
+Simple Streamer operates non-destructively. Before injecting the primary stream output, it automatically takes a snapshot of your existing OBS `Settings → Stream` configuration (e.g. your personal Facebook Live key, custom RTMP server, or YouTube service). As soon as the broadcast ends (or if OBS is restarted), your original stream settings are automatically restored. You can continue streaming manually through native OBS at any time without re-entering your keys.
 
 #### "Can I record locally while streaming?"
 Yes. You can click **Start Recording** in OBS at any time, or configure OBS to automatically record whenever a stream begins. Local recording runs independently of live streaming.

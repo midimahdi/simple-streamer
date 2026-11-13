@@ -172,7 +172,7 @@ export async function validateFacebookPage({ pageId, accessToken }) {
   try {
     const appsecretProof = getAppSecretProof(accessToken);
     const proofParam = appsecretProof ? `&appsecret_proof=${encodeURIComponent(appsecretProof)}` : '';
-    const url = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?fields=id,name,tasks,access_token&access_token=${encodeURIComponent(accessToken)}${proofParam}`;
+    const url = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?fields=id,name,access_token&access_token=${encodeURIComponent(accessToken)}${proofParam}`;
     const res = await fetch(url);
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
@@ -181,17 +181,11 @@ export async function validateFacebookPage({ pageId, accessToken }) {
     }
 
     const data = await res.json();
-    const tasks = data.tasks || [];
-    const canPublish = tasks.length === 0 || tasks.includes('CREATE_CONTENT') || tasks.includes('LIVE_VIDEO_CREATE') || tasks.includes('MANAGE');
-
-    if (!canPublish) {
-      return { valid: false, error: 'Token lacks CREATE_CONTENT or LIVE_VIDEO_CREATE permission on this Page.' };
-    }
-
     return {
       valid: true,
       name: data.name || 'Facebook Page',
       pageId: data.id,
+      accessToken: data.access_token || accessToken,
     };
   } catch (err) {
     return { valid: false, error: err.message };

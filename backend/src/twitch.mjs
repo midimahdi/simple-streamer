@@ -78,23 +78,74 @@ export async function validateTwitchChannel({ broadcasterId, broadcasterName, st
 }
 
 /**
+ * Refresh expired Twitch User Access Token using Refresh Token.
+ */
+export async function refreshTwitchToken({
+  refreshToken,
+  clientId = process.env.TWITCH_CLIENT_ID,
+  clientSecret = process.env.TWITCH_CLIENT_SECRET,
+}) {
+  if (!refreshToken) return null;
+  const id = clientId || process.env.TWITCH_CLIENT_ID;
+  const secret = clientSecret || process.env.TWITCH_CLIENT_SECRET;
+  if (!id || !secret) return null;
+
+  try {
+    const res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: id,
+        client_secret: secret,
+      }).toString(),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      userToken: data.access_token,
+      refreshToken: data.refresh_token || refreshToken,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Update Twitch broadcast metadata (Title & Category).
  *
  * @param {Object} params
  * @param {string} params.broadcasterId
  * @param {string} params.userToken
+ * @param {string} [params.refreshToken]
  * @param {string} params.title Broadcast title
  * @param {string} [params.gameId] Category / Game ID
  * @param {string} [params.clientId]
+ * @param {string} [params.clientSecret]
  */
 export async function updateTwitchChannelInfo({
   broadcasterId,
   userToken,
+  refreshToken,
   title,
   gameId = '',
   clientId = process.env.TWITCH_CLIENT_ID,
+  clientSecret = process.env.TWITCH_CLIENT_SECRET,
 }) {
-  if (!userToken || !broadcasterId) {
+  let activeToken = userToken;
+  let newRefreshToken = refreshToken;
+
+  if (!activeToken && refreshToken) {
+    const refreshed = await refreshTwitchToken({ refreshToken, clientId, clientSecret });
+    if (refreshed) {
+      activeToken = refreshed.userToken;
+      newRefreshToken = refreshed.refreshToken;
+    }
+  }
+
+  if (!activeToken || !broadcasterId) {
     return { ok: false, error: 'Missing broadcasterId or userToken' };
   }
 
@@ -109,22 +160,40 @@ export async function updateTwitchChannelInfo({
     };
     if (gameId) payload.game_id = gameId;
 
-    const res = await fetch(`${TWITCH_API_BASE}/channels?broadcaster_id=${encodeURIComponent(broadcasterId)}`, {
+    let res = await fetch(`${TWITCH_API_BASE}/channels?broadcaster_id=${encodeURIComponent(broadcasterId)}`, {
       method: 'PATCH',
       headers: {
         'Client-ID': id,
-        Authorization: `Bearer ${userToken}`,
+        Authorization: `Bearer ${activeToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
     });
+
+    // Auto-refresh token on 401 if refreshToken is available
+    if (res.status === 401 && refreshToken) {
+      const refreshed = await refreshTwitchToken({ refreshToken, clientId, clientSecret });
+      if (refreshed) {
+        activeToken = refreshed.userToken;
+        newRefreshToken = refreshed.refreshToken;
+        res = await fetch(`${TWITCH_API_BASE}/channels?broadcaster_id=${encodeURIComponent(broadcasterId)}`, {
+          method: 'PATCH',
+          headers: {
+            'Client-ID': id,
+            Authorization: `Bearer ${activeToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+    }
 
     if (!res.ok) {
       const errText = await res.text();
       return { ok: false, error: `Twitch API error (${res.status}): ${errText}` };
     }
 
-    return { ok: true };
+    return { ok: true, userToken: activeToken, refreshToken: newRefreshToken };
   } catch (err) {
     return { ok: false, error: err.message };
   }

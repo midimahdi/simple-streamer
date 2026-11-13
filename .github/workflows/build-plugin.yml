@@ -192,22 +192,50 @@ jobs:
           Copy-Item -Path "plugin\build\x64\simple-streamer.dll" -Destination "dist\SimpleStreamer\"
           Compress-Archive -Path "dist\SimpleStreamer\*" -DestinationPath "SimpleStreamer-Windows-x64.zip"
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Build SimpleStreamer-Setup.exe (Inno Setup)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+          }
+          Write-Host "Compiling installer using: $iscc"
+          & $iscc installer\windows\SimpleStreamer-Setup.iss
+          if (-not (Test-Path "dist\SimpleStreamer-Setup.exe")) {
+            Write-Error "Failed to generate dist\SimpleStreamer-Setup.exe"
+            exit 1
+          }
+          Write-Host "SUCCESS: dist\SimpleStreamer-Setup.exe built successfully."
+
       - name: Upload Windows x64 Artifact
         uses: actions/upload-artifact@v4
         with:
           name: simple-streamer-windows-x64
           path: |
+            dist/SimpleStreamer-Setup.exe
             SimpleStreamer-Windows-x64.zip
             plugin/build/x64/simple-streamer.dll
 
   release:
     name: Publish Continuous Release
-    needs: [build-windows]
+    needs: [build-macos, build-windows]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: simple-streamer-macos-universal
+          path: release-assets
+
       - name: Download Windows Artifact
         uses: actions/download-artifact@v4
         with:
@@ -219,7 +247,7 @@ jobs:
         with:
           tag_name: latest
           name: Simple Streamer Latest Build
-          body: Continuous build of Simple Streamer native plugins and Windows installer bundle.
+          body: Continuous build of Simple Streamer native plugins, macOS installer, and Windows .exe installer bundle.
           draft: false
           prerelease: false
           files: |

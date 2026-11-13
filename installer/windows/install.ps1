@@ -27,7 +27,7 @@ if (-not (Test-Path $ObsDir)) {
 
 # 3. Register Custom Browser Dock
 $DockName = "Simple Streamer"
-$DockUrl = "https://simple-streamer.bdjlmn.com/dock"
+$DockUrl = "http://127.0.0.1:45455/dock"
 
 function Set-ObsDockConfig($file) {
     if (-not (Test-Path $file)) { return }
@@ -35,8 +35,12 @@ function Set-ObsDockConfig($file) {
     if ($content -notmatch '\[ExtraBrowserDocks\]') {
         $content += "`r`n[ExtraBrowserDocks]`r`n"
     }
-    if ($content -match 'ExtraBrowserDocks') {
-        if ($content -notmatch 'Simple Streamer') {
+    # Migrate legacy remote URLs to fast, reliable local bridge endpoint
+    if ($content -match 'https://simple-streamer\.bdjlmn\.com/dock') {
+        $content = $content -replace 'https://simple-streamer\.bdjlmn\.com/dock', $DockUrl
+        [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
+    }
+    if ($content -notmatch 'Simple Streamer') {
             $lines = $content -split "`r?`n"
             $newLines = @()
             $inSection = $false
@@ -104,6 +108,8 @@ $UserPluginDir = "$ObsDir\plugins\simple-streamer\bin\64bit"
 if (-not (Test-Path $UserPluginDir)) { New-Item -ItemType Directory -Path $UserPluginDir -Force | Out-Null }
 
 $localDll = Join-Path $PSScriptRoot "plugin\64bit\simple-streamer.dll"
+if (-not (Test-Path $localDll)) { $localDll = Join-Path $PSScriptRoot "simple-streamer.dll" }
+if (-not (Test-Path $localDll)) { $localDll = Join-Path $PSScriptRoot "..\..\plugin\build\x64\simple-streamer.dll" }
 $installedDll = "$UserPluginDir\simple-streamer.dll"
 
 if (Test-Path $localDll) {
@@ -141,10 +147,106 @@ try {
 $OldVbs = "$BridgeDir\bridge.vbs"
 if (Test-Path $OldVbs) { Remove-Item $OldVbs -Force -ErrorAction SilentlyContinue }
 
+# Configure Windows Firewall and URL ACL for Mobile Remote Control
+Write-Host "    Configuring Windows Firewall for Mobile Remote..." -ForegroundColor Cyan
+try {
+    netsh advfirewall firewall add rule name="Simple Streamer Services" dir=in action=allow protocol=TCP localport=4455,45455 profile=any | Out-Null
+    netsh advfirewall firewall add rule name="Simple Streamer Discovery" dir=in action=allow protocol=UDP localport=45456 profile=any | Out-Null
+    netsh http add urlacl url=http://+:45455/ user=Everyone | Out-Null
+} catch {}
+
+# Copy Mobile Remote Web UI & Dock assets to bridge directory & plugin config
+$DockDir = "$PSScriptRoot\..\..\dock"
+if (-not (Test-Path $DockDir)) { $DockDir = "$PSScriptRoot\dock" }
+if (-not (Test-Path $DockDir)) { $DockDir = "$BridgeDir\dock" }
+$PluginConfigDir = "$ObsDir\plugin_config\simple-streamer"
+if (-not (Test-Path $PluginConfigDir)) { New-Item -ItemType Directory -Path $PluginConfigDir -Force | Out-Null }
+
+if (Test-Path $DockDir) {
+    Copy-Item -Path "$DockDir\*" -Destination $BridgeDir -Recurse -Force
+    Copy-Item -Path "$DockDir\*" -Destination $PluginConfigDir -Recurse -Force
+    Write-Host "    [OK] Dock and Remote assets deployed from local bundle." -ForegroundColor Green
+} else {
+    Write-Host "    [!] Local dock bundle not found. Downloading assets from GitHub..." -ForegroundColor Cyan
+    $files = @(
+        "app.js", "index.html", "style.css", "obs-client.js",
+        "remote.html", "manifest.json", "sw.js", "icon.svg",
+        "icon-192.png", "icon-512.png", "vendor/qrcode.min.js"
+    )
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $baseUrl = "https://raw.githubusercontent.com/midimahdi/simple-streamer/main/dock"
+    foreach ($f in $files) {
+        $destPath = "$BridgeDir\$f"
+        $destDir = Split-Path $destPath
+        if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+        $obsDestPath = "$PluginConfigDir\$f"
+        $obsDestDir = Split-Path $obsDestPath
+        if (-not (Test-Path $obsDestDir)) { New-Item -ItemType Directory -Path $obsDestDir -Force | Out-Null }
+        try {
+            Invoke-WebRequest -Uri "$baseUrl/$f" -OutFile $destPath -UseBasicParsing -TimeoutSec 10
+            Copy-Item -Path $destPath -Destination $obsDestPath -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+    Write-Host "    [OK] Dock and Remote assets downloaded and deployed." -ForegroundColor Green
+}
+
 $BridgeCode = @'
+$BridgeDir = "$env:LOCALAPPDATA\SimpleStreamer"
+
+function Get-BroadcastState {
+    $bFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\broadcast_state.json"
+    if (Test-Path $bFile) {
+        try {
+            $parsed = Get-Content $bFile -Raw -Encoding utf8 | ConvertFrom-Json
+            if ($parsed) { return $parsed }
+        } catch {}
+    }
+    return @{
+        title = "Mosque Live Broadcast"
+        description = "Weekly Lecture from Main Prayer Hall"
+        destinations = @(
+            @{ name = "YouTube"; platform = "youtube"; enabled = $true },
+            @{ name = "Facebook Live"; platform = "facebook"; enabled = $true }
+        )
+    }
+}
+
+function Save-BroadcastState($stateObj) {
+    $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
+    if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+    $bFile = "$d\broadcast_state.json"
+    $json = $stateObj | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText($bFile, $json, [System.Text.Encoding]::UTF8)
+}
+
+# Start background UDP discovery responder
+try {
+    $udpScript = {
+        try {
+            $udp = New-Object System.Net.Sockets.UdpClient(45456)
+            $udp.EnableBroadcast = $true
+            while ($true) {
+                $ep = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+                $bytes = $udp.Receive([ref]$ep)
+                $str = [System.Text.Encoding]::UTF8.GetString($bytes)
+                if ($str -match "SIMPLE_STREAMER_DISCOVER") {
+                    $resp = [System.Text.Encoding]::UTF8.GetBytes("SIMPLE_STREAMER_HERE:45455:4455")
+                    $udp.Send($resp, $resp.Length, $ep) | Out-Null
+                }
+            }
+        } catch {}
+    }
+    $runspace = [powershell]::Create().AddScript($udpScript)
+    $runspace.BeginInvoke() | Out-Null
+} catch {}
+
 $listener = New-Object System.Net.HttpListener
 try {
+    $listener.Prefixes.Add("http://+:45455/")
+} catch {
     $listener.Prefixes.Add("http://127.0.0.1:45455/")
+}
+try {
     $listener.Start()
 } catch { exit }
 
@@ -234,6 +336,235 @@ while ($listener.IsListening) {
             continue
         }
 
+        if ($path -eq "/remote" -or $path -eq "/remote.html") {
+            $remoteFile = "$BridgeDir\remote.html"
+            if (-not (Test-Path $remoteFile)) { $remoteFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\remote.html" }
+            if (Test-Path $remoteFile) {
+                $html = [System.IO.File]::ReadAllBytes($remoteFile)
+                $res.ContentType = "text/html; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate")
+                $res.AddHeader("Pragma", "no-cache")
+                $res.OutputStream.Write($html, 0, $html.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/remote-config") {
+            $localIp = "127.0.0.1"
+            try {
+                $ipObj = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^127\.' -and $_.IPAddress -notmatch '^169\.254\.' } | Select-Object -First 1
+                if ($ipObj) { $localIp = $ipObj.IPAddress }
+            } catch {}
+
+            $bState = Get-BroadcastState
+            $bTitle = if ($bState.title) { $bState.title } else { "Mosque Live Broadcast" }
+            $bDesc = if ($bState.description) { $bState.description } else { "" }
+            $bDest = if ($bState.destinations) { $bState.destinations } else { @() }
+
+            $respObj = @{
+                ok = $true
+                bridgePort = 45455
+                obsPort = $port
+                hostIp = $localIp
+                obsPass = $pass
+                title = $bTitle
+                description = $bDesc
+                destinations = $bDest
+            }
+            $respJson = $respObj | ConvertTo-Json -Depth 5
+            $buf = [System.Text.Encoding]::UTF8.GetBytes($respJson)
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/save-title") {
+            $title = $req.QueryString["title"]
+            $desc = $req.QueryString["description"]
+
+            if (-not $title -and $req.HttpMethod -eq "POST") {
+                try {
+                    $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+                    $body = $reader.ReadToEnd()
+                    $bJson = $body | ConvertFrom-Json
+                    if ($bJson.title) { $title = $bJson.title }
+                    if ($bJson.description) { $desc = $bJson.description }
+                } catch {}
+            }
+
+            $bState = Get-BroadcastState
+            $changed = $false
+            if ($title) {
+                if ($bState -is [PSCustomObject]) {
+                    $bState.title = $title
+                } else {
+                    $bState["title"] = $title
+                }
+                $changed = $true
+            }
+            if ($null -ne $desc) {
+                if ($bState -is [PSCustomObject]) {
+                    $bState.description = $desc
+                } else {
+                    $bState["description"] = $desc
+                }
+                $changed = $true
+            }
+            if ($changed) {
+                Save-BroadcastState $bState
+            }
+
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"status\`":\`"ok\`"}")
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/manifest.json") {
+            $mFile = "$BridgeDir\manifest.json"
+            if (-not (Test-Path $mFile)) { $mFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\manifest.json" }
+            if (Test-Path $mFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($mFile)
+            } else {
+                $manifest = '{"id":"/remote","name":"Simple Streamer","short_name":"Streamer","start_url":"/remote","scope":"/","display":"standalone","background_color":"#0d0f12","theme_color":"#0d0f12","icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}'
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($manifest)
+            }
+            $res.ContentType = "application/manifest+json; charset=utf-8"
+            $res.AddHeader("Cache-Control", "no-cache")
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/sw.js") {
+            $swFile = "$BridgeDir\sw.js"
+            if (-not (Test-Path $swFile)) { $swFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\sw.js" }
+            if (Test-Path $swFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($swFile)
+                $res.ContentType = "application/javascript; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/icon-192.png" -or $path -eq "/icon-512.png") {
+            $iconFile = "$BridgeDir$path"
+            if (-not (Test-Path $iconFile)) { $iconFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer$path" }
+            if (Test-Path $iconFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($iconFile)
+                $res.ContentType = "image/png"
+                $res.AddHeader("Cache-Control", "public, max-age=86400")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/icon.svg") {
+            $svgFile = "$BridgeDir\icon.svg"
+            if (-not (Test-Path $svgFile)) { $svgFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\icon.svg" }
+            if (Test-Path $svgFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($svgFile)
+            } else {
+                $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#10b981"/><polygon points="40,30 70,50 40,70" fill="#ffffff"/></svg>'
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($svg)
+            }
+            $res.ContentType = "image/svg+xml"
+            $res.AddHeader("Cache-Control", "public, max-age=86400")
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/dock" -or $path -eq "/dock/" -or $path -eq "/dock/index.html") {
+            $dockFile = "$BridgeDir\index.html"
+            if (-not (Test-Path $dockFile)) { $dockFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\index.html" }
+            if (Test-Path $dockFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($dockFile)
+                $res.ContentType = "text/html; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/dock/app.js" -or $path -eq "/app.js") {
+            $appFile = "$BridgeDir\app.js"
+            if (-not (Test-Path $appFile)) { $appFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\app.js" }
+            if (Test-Path $appFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($appFile)
+                $res.ContentType = "application/javascript; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/dock/obs-client.js" -or $path -eq "/obs-client.js") {
+            $jsFile = "$BridgeDir\obs-client.js"
+            if (-not (Test-Path $jsFile)) { $jsFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\obs-client.js" }
+            if (Test-Path $jsFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($jsFile)
+                $res.ContentType = "application/javascript; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -match "qrcode(\.min)?\.js$") {
+            $qrFile = "$BridgeDir\vendor\qrcode.min.js"
+            if (-not (Test-Path $qrFile)) { $qrFile = "$BridgeDir\qrcode.min.js" }
+            if (-not (Test-Path $qrFile)) { $qrFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\vendor\qrcode.min.js" }
+            if (Test-Path $qrFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($qrFile)
+                $res.ContentType = "application/javascript; charset=utf-8"
+                $res.AddHeader("Cache-Control", "public, max-age=86400")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/auth-challenge") {
+            $salt = $req.QueryString["salt"]
+            $challenge = $req.QueryString["challenge"]
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            $secretBytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($pass + $salt))
+            $secretBase64 = [Convert]::ToBase64String($secretBytes)
+            $authBytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($secretBase64 + $challenge))
+            $authBase64 = [Convert]::ToBase64String($authBytes)
+            $respObj = @{ authResponse = $authBase64 }
+            $respJson = $respObj | ConvertTo-Json
+            $buf = [System.Text.Encoding]::UTF8.GetBytes($respJson)
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
         if ($path -eq "/save-destinations" -and $req.HttpMethod -eq "POST") {
             $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
             if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
@@ -250,6 +581,68 @@ while ($listener.IsListening) {
             $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"ok\`":true}")
             $res.ContentType = "application/json"
             $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/save-state-destinations" -and $req.HttpMethod -eq "POST") {
+            $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+            $body = $reader.ReadToEnd()
+            try {
+                $obj = $body | ConvertFrom-Json
+                if ($obj.destinations) {
+                    $bState = Get-BroadcastState
+                    if ($bState -is [PSCustomObject]) {
+                        $bState.destinations = $obj.destinations
+                    } else {
+                        $bState["destinations"] = $obj.destinations
+                    }
+                    Save-BroadcastState $bState
+                }
+            } catch {}
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"status\`":\`"ok\`"}")
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/dock/style.css" -or $path -eq "/style.css") {
+            $cssFile = "$BridgeDir\style.css"
+            if (-not (Test-Path $cssFile)) { $cssFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\style.css" }
+            if (Test-Path $cssFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($cssFile)
+                $res.ContentType = "text/css; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
+        # General static file fallback for all dock/remote assets
+        $rel = $path.TrimStart('/')
+        if ($rel.StartsWith("dock/")) { $rel = $rel.Substring(5) }
+        $candidate = "$BridgeDir\$rel"
+        if (-not (Test-Path $candidate)) { $candidate = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\$rel" }
+        if ((Test-Path $candidate) -and (-not (Test-Path $candidate -PathType Container))) {
+            $bytes = [System.IO.File]::ReadAllBytes($candidate)
+            $ext = [System.IO.Path]::GetExtension($candidate).ToLower()
+            $mime = "application/octet-stream"
+            switch ($ext) {
+                ".html" { $mime = "text/html; charset=utf-8" }
+                ".js"   { $mime = "application/javascript; charset=utf-8" }
+                ".css"  { $mime = "text/css; charset=utf-8" }
+                ".svg"  { $mime = "image/svg+xml" }
+                ".png"  { $mime = "image/png" }
+                ".jpg"  { $mime = "image/jpeg" }
+                ".json" { $mime = "application/json; charset=utf-8" }
+            }
+            $res.ContentType = $mime
+            $res.AddHeader("Cache-Control", "no-cache")
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
             $res.Close()
             continue
         }
@@ -288,6 +681,7 @@ $Shortcut.Save()
 # Launch bridge directly right now (invisible)
 Start-Process "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$BridgePsFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
 Write-Host "    [OK] Background bridge installed and running on port 45455." -ForegroundColor Green
+Write-Host "    [OK] Non-destructive stream settings preservation active." -ForegroundColor Green
 
 Write-Host ""
 Write-Host "=======================================================" -ForegroundColor Green

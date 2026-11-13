@@ -15,7 +15,7 @@ PLIST_PATH="$HOME/Library/LaunchAgents/com.bdjlmn.simple-streamer.plist"
 OBS_DIR="$HOME/Library/Application Support/obs-studio"
 USER_INI="$OBS_DIR/user.ini"
 DOCK_TITLE="Simple Streamer"
-DOCK_URL="https://simple-streamer.bdjlmn.com"
+DOCK_URL="http://127.0.0.1:45455/dock"
 
 echo ""
 echo "=========================================================="
@@ -50,7 +50,11 @@ else
 fi
 
 chmod +x "$BIN_DIR/simple-streamer-bridge"
-echo "   ✓ Bridge installed at $BIN_DIR/simple-streamer-bridge"
+codesign --force --deep -s - -i com.bdjlmn.simple-streamer "$BIN_DIR/simple-streamer-bridge" 2>/dev/null || true
+/usr/libexec/ApplicationFirewall/socketfilterfw --remove "$BIN_DIR/simple-streamer-bridge" 2>/dev/null || true
+/usr/libexec/ApplicationFirewall/socketfilterfw --add "$BIN_DIR/simple-streamer-bridge" 2>/dev/null || true
+/usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$BIN_DIR/simple-streamer-bridge" 2>/dev/null || true
+echo "   ✓ Bridge installed and authorized at $BIN_DIR/simple-streamer-bridge"
 
 # 3. Register LaunchAgent for background operation
 echo "🚀 Setting up automatic background bridge..."
@@ -98,6 +102,18 @@ if [ -n "$PLUGIN_SRC" ]; then
     rm -rf "$OBS_DIR/plugins/simple-streamer.plugin"
     cp -R "$PLUGIN_SRC" "$OBS_DIR/plugins/"
     echo "   ✓ Native plugin installed to $OBS_DIR/plugins/simple-streamer.plugin"
+fi
+
+# 3c. Install Dock & Mobile Remote Control Web UI assets
+DOCK_SRC="$SCRIPT_DIR/../../dock"
+if [ -d "$DOCK_SRC" ]; then
+    mkdir -p "$OBS_DIR/plugin_config/simple-streamer"
+    cp -R "$DOCK_SRC"/* "$OBS_DIR/plugin_config/simple-streamer/"
+    echo "   ✓ Dock and Mobile Remote UI assets installed to $OBS_DIR/plugin_config/simple-streamer"
+elif [ -f "$SCRIPT_DIR/../../dock/remote.html" ]; then
+    mkdir -p "$OBS_DIR/plugin_config/simple-streamer"
+    cp "$SCRIPT_DIR/../../dock/remote.html" "$OBS_DIR/plugin_config/simple-streamer/remote.html"
+    echo "   ✓ Mobile Remote UI installed to $OBS_DIR/plugin_config/simple-streamer/remote.html"
 fi
 
 # 4. Inject Custom Browser Dock into OBS user.ini
@@ -153,5 +169,6 @@ echo "    🎉 Installation Complete!"
 echo "    1. Open OBS Studio."
 echo "    2. Find 'Simple Streamer' in your Docks menu."
 echo "    3. Click 'Sign In' to authenticate in Safari/Chrome!"
+echo "    (Personal OBS stream settings are backed up & restored automatically)"
 echo "=========================================================="
 echo ""

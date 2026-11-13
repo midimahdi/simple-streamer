@@ -38,6 +38,8 @@ Most multi-streaming solutions require either:
 - **Built-in 1-Click OAuth:** Connect channels directly from the OBS dock UI with zero token copying. Stream keys (including Kick via OAuth `streamkey:read`) are discovered automatically.
 - **Live In-Dock Telemetry:** Real-time upload bitrate, output FPS, dropped frame percentage, and per-destination connection badges (`LIVE`, `STARTING`, `FAILED`).
 - **Clean Remote Teardown:** Terminating stream in OBS automatically concludes the broadcast on remote platforms (ending Facebook Live and transitioning YouTube broadcasts cleanly).
+- **Non-Destructive OBS Settings:** Automatically snapshots your personal OBS `Settings → Stream` configuration before broadcast kickoff and restores it upon stream termination so manual streaming setups are never lost.
+- **Mobile Remote Control & Confidence Preview:** Control scenes (Stage & Cut), monitor master audio VU levels, and kickoff broadcasts from a smartphone via zero-IP mDNS (`http://simple-streamer.local:45455/remote`).
 - **Stateless & Privacy-First:** Zero database. All OAuth tokens and stream destinations are stored strictly in client-side OBS `localStorage`.
 
 ---

@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0c10" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Simple Streamer" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <title>Simple Streamer — Mobile Studio</title>
+  <style>
+    :root {
+      --bg-base: #0a0c10;
+      --bg-card: #131722;
+      --bg-card-subtle: #181d2a;
+      --bg-card-elevated: #1e2434;
+      --border-subtle: #232a3d;
+      --border-strong: #333d56;
+      --text-main: #f3f5f8;
+      --text-dim: #9aa5b8;
+      --text-muted: #647087;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-blue: #3b82f6;
+      --accent-amber: #f59e0b;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --safe-top: env(safe-area-inset-top, 14px);
+      --safe-bottom: env(safe-area-inset-bottom, 16px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: calc(var(--safe-top) + 8px) 14px calc(var(--safe-bottom) + 16px) 14px;
+      gap: 12px;
+      max-width: 480px;
+      margin: 0 auto;
+      overflow-x: hidden;
+    }
+
+    /* Top Brand & Status Header */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 4px;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo-icon {
+      width: 20px;
+      height: 20px;
+      color: var(--accent-green);
+    }
+
+    .brand-name {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--text-main);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-install-shortcut {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      padding: 4px 9px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    .conn-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+    }
+
+    .conn-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-amber);
+    }
+
+    .conn-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 6px var(--accent-green);
+    }
+
+    .conn-dot.live {
+      background: var(--accent-red);
+      box-shadow: 0 0 8px var(--accent-red);
+      animation: pulseLive 1.5s infinite;
+    }
+
+    .conn-dot.error {
+      background: var(--accent-red);
+    }
+
+    @keyframes pulseLive {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    /* Studio Card Base */
+    .studio-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 1. Broadcast Video & Confidence HUD Card */
+    .monitor-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .video-viewport-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .video-await-placeholder {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .hud-badge-left {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      background: rgba(10, 12, 16, 0.85);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .hud-badge-left.live {
+      background: rgba(239, 68, 68, 0.9);
+      color: #fff;
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .hud-badge-left.staged {
+      background: rgba(245, 158, 11, 0.95);
+      color: #000;
+      border-color: rgba(245, 158, 11, 0.8);
+      font-weight: 900;
+    }
+
+    .monitor-container.staged {
+      box-shadow: inset 0 0 0 2px var(--accent-amber);
+    }
+
+    .hud-badge-right {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      background: rgba(10, 12, 16, 0.85);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    /* Integrated Audio Level Bar at Card Base */
+    .audio-monitor-strip {
+      padding: 8px 12px;
+      background: var(--bg-card-subtle);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      transition: background 0.2s ease;
+    }
+
+    .audio-monitor-strip.alert {
+      background: rgba(239, 68, 68, 0.12);
+      border-top-color: rgba(239, 68, 68, 0.4);
+    }
+
+    .audio-strip-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .audio-meta-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+    }
+
+    .audio-silence-tag {
+      background: rgba(239, 68, 68, 0.25);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      animation: pulseAlert 1.2s infinite ease-in-out;
+    }
+
+    @keyframes pulseAlert {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.96); }
+    }
+
+    .audio-controls-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .audio-db-readout {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .btn-mic-mute {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-mic-mute.is-muted {
+      background: #ef4444;
+      color: #fff;
+      border-color: #ef4444;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    }
+
+    .audio-level-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .audio-level-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981 0%, #10b981 65%, #f59e0b 65%, #f59e0b 85%, #ef4444 85%, #ef4444 100%);
+      border-radius: 3px;
+      transition: width 0.06s ease-out;
+    }
+
+    .audio-level-fill.muted {
+      background: #4b5563 !important;
+      opacity: 0.4;
+    }
+
+    /* 2. Scene Director Card (2-Step Safety Cut) */
+    .director-card {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-header-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .card-header-status {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--accent-blue);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    /* Staging Confirmation Banner (Pops up when a scene is staged) */
+    .staging-confirm-box {
+      display: none;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      align-items: center;
+      justify-content: space-between;
+      animation: slideIn 0.18s ease-out;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .staging-text {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-amber);
+    }
+
+    .staging-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-stage-cancel {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-dim);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-stage-cut {
+      background: var(--accent-red);
+      border: none;
+      color: #fff;
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-stage-cut:active {
+      transform: scale(0.96);
+    }
+
+    /* Scene Grid/Pills */
+    .scene-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+      gap: 8px;
+    }
+
+    .scene-tile {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: center;
+    }
+
+    .scene-tile:active {
+      transform: scale(0.97);
+    }
+
+    .scene-tile-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .scene-tile-sub {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Live Program Scene */
+    .scene-tile.live-active {
+      background: rgba(59, 130, 246, 0.18);
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+    }
+
+    .scene-tile.live-active .scene-tile-name {
+      color: #fff;
+    }
+
+    .scene-tile.live-active .scene-tile-sub {
+      color: var(--accent-blue);
+      font-weight: 800;
+    }
+
+    /* Staged Scene */
+    .scene-tile.staged {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: var(--accent-amber);
+      animation: pulseBorder 1s infinite alternate;
+    }
+
+    .scene-tile.staged .scene-tile-sub {
+      color: var(--accent-amber);
+      font-weight: 800;
+    }
+
+    @keyframes pulseBorder {
+      from { box-shadow: 0 0 4px rgba(245, 158, 11, 0.3); }
+      to { box-shadow: 0 0 12px rgba(245, 158, 11, 0.6); }
+    }
+
+    /* 3. Broadcast Targets & Setup Card */
+    .broadcast-info-card {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .title-display-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .stream-title-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.3;
+    }
+
+    .stream-desc-text {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 3px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .btn-edit-title {
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      color: var(--accent-blue);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .targets-pills-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .platform-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-subtle);
+      padding: 5px 11px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .platform-pill:active:not(.locked) {
+      transform: scale(0.96);
+    }
+
+    .platform-pill.active {
+      border-color: rgba(16, 185, 129, 0.45);
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--accent-green);
+    }
+
+    .platform-pill.disabled {
+      opacity: 0.45;
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+    }
+
+    .platform-pill.locked {
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+
+    .platform-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      flex-shrink: 0;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+      transition: background 0.15s ease;
+    }
+
+    .platform-dot.disabled {
+      background: var(--text-dim);
+      box-shadow: none;
+    }
+
+    /* 4. Stream Telemetry Ribbon */
+    .telemetry-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 8px 10px;
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      text-align: center;
+      gap: 4px;
+    }
+
+    .telemetry-col {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .telemetry-label {
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .telemetry-value {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--text-main);
+    }
+
+    /* 5. Master Slide-to-Action Bar */
+    .action-zone {
+      margin-top: 4px;
+    }
+
+    .slider-track {
+      position: relative;
+      width: 100%;
+      height: 52px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
+      border-radius: 26px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slider-track.live {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .slider-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0;
+      background: rgba(16, 185, 129, 0.25);
+      border-radius: 26px;
+      pointer-events: none;
+    }
+
+    .slider-track.live .slider-fill {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    .slider-label {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .slider-track.live .slider-label {
+      color: var(--accent-red);
+    }
+
+    .slider-thumb {
+      position: absolute;
+      left: 4px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 900;
+      font-size: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .slider-track.live .slider-thumb {
+      background: var(--accent-red);
+    }
+
+    /* Modals & Overlays */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-heading {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .modal-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+
+    .modal-input {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      padding: 10px 12px;
+      font-size: 13px;
+      outline: none;
+      width: 100%;
+    }
+
+    .modal-btn-row {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .btn-modal {
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-modal-cancel {
+      background: var(--bg-card-subtle);
+      color: var(--text-dim);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-modal-confirm-red {
+      background: var(--accent-red);
+      color: #fff;
+    }
+
+    .btn-modal-confirm-blue {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+
+    .pulse-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      box-shadow: 0 0 6px var(--accent-blue);
+      animation: pulseIndicator 1.4s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulseIndicator {
+      0% { opacity: 0.3; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+      100% { opacity: 0.3; transform: scale(0.9); }
+    }
+
+    /* Visual Flash Feedback (Instant Tactile Lighting for iPhones & Non-Haptic Screens) */
+    @keyframes flashWhiteRipple {
+      0% {
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.8), inset 0 0 14px rgba(255, 255, 255, 0.6);
+        filter: brightness(1.5);
+      }
+      100% {
+        box-shadow: 0 0 0 14px rgba(255, 255, 255, 0), inset 0 0 0 rgba(255, 255, 255, 0);
+        filter: brightness(1);
+      }
+    }
+
+    @keyframes flashGreenGlow {
+      0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.9), 0 0 20px rgba(16, 185, 129, 0.7);
+        filter: brightness(1.35);
+      }
+      100% {
+        box-shadow: 0 0 0 14px rgba(16, 185, 129, 0), 0 0 0 rgba(16, 185, 129, 0);
+        filter: brightness(1);
+      }
+    }
+
+    @keyframes flashRedGlow {
+      0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.9), 0 0 20px rgba(239, 68, 68, 0.7);
+        filter: brightness(1.35);
+      }
+      100% {
+        box-shadow: 0 0 0 14px rgba(239, 68, 68, 0), 0 0 0 rgba(239, 68, 68, 0);
+        filter: brightness(1);
+      }
+    }
+
+    @keyframes flashAmberGlow {
+      0% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.9), 0 0 20px rgba(245, 158, 11, 0.7);
+        filter: brightness(1.3);
+      }
+      100% {
+        box-shadow: 0 0 0 14px rgba(245, 158, 11, 0), 0 0 0 rgba(245, 158, 11, 0);
+        filter: brightness(1);
+      }
+    }
+
+    .flash-tap {
+      animation: flashWhiteRipple 0.28s cubic-bezier(0.1, 0.9, 0.2, 1) !important;
+    }
+
+    .flash-success {
+      animation: flashGreenGlow 0.35s cubic-bezier(0.1, 0.9, 0.2, 1) !important;
+    }
+
+    .flash-alert {
+      animation: flashRedGlow 0.35s cubic-bezier(0.1, 0.9, 0.2, 1) !important;
+    }
+
+    .flash-stage {
+      animation: flashAmberGlow 0.35s cubic-bezier(0.1, 0.9, 0.2, 1) !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top App Bar -->
+  <header class="app-header">
+    <div class="brand-group">
+      <svg class="brand-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 11a9 9 0 0 1 9 9"></path>
+        <path d="M4 4a16 16 0 0 1 16 16"></path>
+        <circle cx="5" cy="19" r="1"></circle>
+      </svg>
+      <span class="brand-name">SIMPLE STREAMER</span>
+    </div>
+    <div class="header-actions">
+      <button id="btnInstallApp" class="btn-install-shortcut" style="display: none;">
+        <span>📲 Install</span>
+      </button>
+      <div id="connBadge" class="conn-badge">
+        <span id="connDot" class="conn-dot"></span>
+        <span id="connText">CONNECTING</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 1. Video Monitor & Integrated Audio Card -->
+  <div class="studio-card">
+    <div class="monitor-container">
+      <div id="videoPlaceholder" class="video-await-placeholder">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+        </svg>
+        <span>Awaiting OBS Program...</span>
+      </div>
+      <img id="videoFrame" class="video-viewport-img" style="display: none;" alt="OBS Live Preview" />
+      
+      <div id="videoBadge" class="hud-badge-left">
+        <span>●</span> <span id="badgeStatus">STANDBY</span>
+      </div>
+      <div id="hudSceneTag" class="hud-badge-right">Scene 2</div>
+    </div>
+
+    <!-- Integrated Audio VU Strip -->
+    <div id="audioStrip" class="audio-monitor-strip">
+      <div class="audio-strip-meta">
+        <div class="audio-meta-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg>
+          <span id="audioName">MASTER AUDIO</span>
+          <span id="silenceAlertTag" class="audio-silence-tag" style="display: none;">⚠️ SILENCE (5s+)</span>
+        </div>
+        <div class="audio-controls-right">
+          <span id="audioDbReadout" class="audio-db-readout">-∞ dB</span>
+          <button id="btnMicMute" class="btn-mic-mute" title="Toggle Microphone Mute">
+            <span id="micMuteIcon">🎙️</span>
+            <span id="micMuteLabel">MUTE</span>
+          </button>
+        </div>
+      </div>
+      <div class="audio-level-track">
+        <div id="audioLevelFill" class="audio-level-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Scene Director (2-Step Safety Cut) -->
+  <div class="studio-card director-card">
+    <div class="card-title-row">
+      <span class="card-header-label">SCENE DIRECTOR</span>
+      <span id="directorCurrentTag" class="card-header-status">LIVE: Scene 2</span>
+    </div>
+
+    <!-- Staging Confirmation Bar (Pops up when user taps a scene) -->
+    <div id="stagingConfirmBox" class="staging-confirm-box">
+      <span id="stagingText" class="staging-text">Stage: Camera Only</span>
+      <div class="staging-actions">
+        <button id="btnCancelStage" class="btn-stage-cancel">Cancel</button>
+        <button id="btnConfirmCut" class="btn-stage-cut">
+          <span>●</span> <span>CUT LIVE ❯</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Scene Selector Tiles -->
+    <div id="sceneGrid" class="scene-grid">
+      <div class="scene-tile" style="opacity: 0.5;">
+        <span class="scene-tile-name">Loading...</span>
+        <span class="scene-tile-sub">OBS Scenes</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Broadcast Targets & Title Card -->
+  <div class="studio-card broadcast-info-card">
+    <div class="card-title-row">
+      <span class="card-header-label">BROADCAST INFO</span>
+      <button id="btnEditTitle" class="btn-edit-title">Edit Details</button>
+    </div>
+    <div class="title-display-wrap">
+      <div style="flex: 1; min-width: 0;">
+        <div id="streamTitleDisplay" class="stream-title-text">Connecting...</div>
+        <div id="streamDescDisplay" class="stream-desc-text"></div>
+      </div>
+    </div>
+
+    <div class="card-header-label" style="margin-top: 6px;">TARGET PLATFORMS</div>
+    <div id="destinationsRow" class="targets-pills-row">
+      <span class="platform-pill disabled" style="cursor:default;">Connecting to platforms...</span>
+    </div>
+  </div>
+
+  <!-- 4. Real-Time Telemetry Ribbon -->
+  <div class="telemetry-row">
+    <div class="telemetry-col">
+      <span class="telemetry-label">UPTIME</span>
+      <span id="metricUptime" class="telemetry-value">00:00:00</span>
+    </div>
+    <div class="telemetry-col">
+      <span class="telemetry-label">BITRATE</span>
+      <span id="metricBitrate" class="telemetry-value">0 kbps</span>
+    </div>
+    <div class="telemetry-col">
+      <span class="telemetry-label">FPS</span>
+      <span id="metricFps" class="telemetry-value">0</span>
+    </div>
+    <div class="telemetry-col">
+      <span class="telemetry-label">DROPPED</span>
+      <span id="metricDropped" class="telemetry-value">0%</span>
+    </div>
+  </div>
+
+  <!-- 5. Master Safety Action Slider -->
+  <div class="action-zone">
+    <div id="sliderTrack" class="slider-track">
+      <div id="sliderFill" class="slider-fill"></div>
+      <div id="sliderLabel" class="slider-label">SLIDE TO GO LIVE ❯❯</div>
+      <div id="sliderThumb" class="slider-thumb">❯</div>
+    </div>
+  </div>
+
+  <!-- Confirm End Live Broadcast Modal -->
+  <div id="endLiveModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div id="endLiveModalTitle" class="modal-heading">End Live Broadcast?</div>
+      <div id="endLiveModalDesc" class="modal-desc">
+        Are you sure you want to stop the live stream on all active destinations?
+      </div>
+      <div class="modal-btn-row">
+        <button id="btnCancelEndLiveModal" class="btn-modal btn-modal-cancel">Keep Streaming</button>
+        <button id="btnConfirmEndLiveModal" class="btn-modal btn-modal-confirm-red">Yes, End Live</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Mic Mute Modal -->
+  <div id="muteConfirmModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div id="muteModalTitle" class="modal-heading">Mute Microphone?</div>
+      <div id="muteModalDesc" class="modal-desc">
+        This will immediately silence the mosque microphone output in OBS Studio.
+      </div>
+      <div class="modal-btn-row">
+        <button id="btnCancelMuteModal" class="btn-modal btn-modal-cancel">Cancel</button>
+        <button id="btnConfirmMuteModal" class="btn-modal btn-modal-confirm-red">Yes, Mute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Details Modal -->
+  <div id="editTitleModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-heading">Edit Broadcast Details</div>
+      <label style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px; display: block;">BROADCAST TITLE</label>
+      <input type="text" id="modalTitleInput" class="modal-input" placeholder="e.g. Friday Sermon or Weekly Lecture" maxlength="120" />
+      <label style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-top: 10px; margin-bottom: 4px; display: block;">DESCRIPTION</label>
+      <textarea id="modalDescInput" class="modal-input" style="height: 64px; resize: none; font-family: inherit; font-size: 12px; line-height: 1.4;" placeholder="e.g. Weekly sermon transmitted from the main prayer hall..."></textarea>
+      <div class="modal-btn-row">
+        <button id="btnCancelTitleModal" class="btn-modal btn-modal-cancel">Cancel</button>
+        <button id="btnSaveTitleModal" class="btn-modal btn-modal-confirm-blue">Save Details</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Switch PC / Reconnect Modal -->
+  <div id="switchPcModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-heading">Connect to OBS Studio</div>
+      <div id="switchPcDesc" class="modal-desc" style="font-size: 12px; line-height: 1.4; color: var(--text-dim);">
+        Targeting host: <strong id="currentHostText" style="color: var(--text-main); font-family: ui-monospace, monospace;">127.0.0.1</strong>
+      </div>
+
+      <div id="discoveryStatusWrap" style="background: var(--bg-card-subtle); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; margin: 12px 0; font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-indicator"></span>
+        <span id="discoveryStatusText">Searching for OBS PC on Wi-Fi...</span>
+      </div>
+
+      <!-- Quick Action: Scan QR from OBS Dock -->
+      <label class="btn-modal btn-modal-confirm-blue" style="display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; margin-bottom: 14px; font-size: 13px; font-weight: 700;">
+        <span>📷</span> <span>Scan OBS Dock QR Code</span>
+        <input type="file" id="qrScanInput" accept="image/*" capture="environment" style="display: none;" />
+      </label>
+
+      <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
+        Or enter IP / Hostname:
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <input type="text" id="manualIpInput" class="modal-input" style="flex: 1; font-family: ui-monospace, monospace; font-size: 12px;" placeholder="e.g. 192.168.1.15 or simple-streamer.local" />
+        <button id="btnConnectManualIp" class="btn-modal btn-modal-confirm-blue" style="padding: 0 14px; white-space: nowrap; font-size: 12px;">Connect</button>
+      </div>
+
+      <div class="modal-btn-row" style="margin-top: 14px;">
+        <button id="btnCloseSwitchPc" class="btn-modal btn-modal-cancel" style="flex: 1;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Application State ---
+    const state = {
+      ws: null,
+      isConnected: false,
+      isIdentified: false,
+      isStreaming: false,
+      isPreparing: false,
+      reqId: 1,
+      pendingRequests: new Map(),
+      sessionPin: '',
+      title: '',
+      description: '',
+      currentScene: '',
+      stagedScene: null,
+      stageTimer: null,
+      scenes: [],
+      destinations: [],
+      audioInputName: null,
+      audioMuted: false,
+      silenceStart: null,
+      isSilenceAlert: false,
+      previewTimer: null,
+      isPageVisible: true,
+      sliderDragging: false,
+      sliderStartX: 0,
+      sliderCurrentX: 0,
+      sliderMaxDrag: 0
+    };
+
+    // UI Cache
+    const el = {
+      connBadge: document.getElementById('connBadge'),
+      connDot: document.getElementById('connDot'),
+      connText: document.getElementById('connText'),
+      btnInstallApp: document.getElementById('btnInstallApp'),
+      videoFrame: document.getElementById('videoFrame'),
+      videoPlaceholder: document.getElementById('videoPlaceholder'),
+      videoBadge: document.getElementById('videoBadge'),
+      badgeStatus: document.getElementById('badgeStatus'),
+      hudSceneTag: document.getElementById('hudSceneTag'),
+      audioStrip: document.getElementById('audioStrip'),
+      audioName: document.getElementById('audioName'),
+      audioDbReadout: document.getElementById('audioDbReadout'),
+      audioLevelFill: document.getElementById('audioLevelFill'),
+      silenceAlertTag: document.getElementById('silenceAlertTag'),
+      btnMicMute: document.getElementById('btnMicMute'),
+      micMuteIcon: document.getElementById('micMuteIcon'),
+      micMuteLabel: document.getElementById('micMuteLabel'),
+      directorCurrentTag: document.getElementById('directorCurrentTag'),
+      stagingConfirmBox: document.getElementById('stagingConfirmBox'),
+      stagingText: document.getElementById('stagingText'),
+      btnCancelStage: document.getElementById('btnCancelStage'),
+      btnConfirmCut: document.getElementById('btnConfirmCut'),
+      sceneGrid: document.getElementById('sceneGrid'),
+      streamTitleDisplay: document.getElementById('streamTitleDisplay'),
+      streamDescDisplay: document.getElementById('streamDescDisplay'),
+      btnEditTitle: document.getElementById('btnEditTitle'),
+      destinationsRow: document.getElementById('destinationsRow'),
+      metricUptime: document.getElementById('metricUptime'),
+      metricBitrate: document.getElementById('metricBitrate'),
+      metricFps: document.getElementById('metricFps'),
+      metricDropped: document.getElementById('metricDropped'),
+      sliderTrack: document.getElementById('sliderTrack'),
+      sliderFill: document.getElementById('sliderFill'),
+      sliderLabel: document.getElementById('sliderLabel'),
+      sliderThumb: document.getElementById('sliderThumb'),
+      endLiveModal: document.getElementById('endLiveModal'),
+      btnCancelEndLiveModal: document.getElementById('btnCancelEndLiveModal'),
+      btnConfirmEndLiveModal: document.getElementById('btnConfirmEndLiveModal'),
+      muteConfirmModal: document.getElementById('muteConfirmModal'),
+      muteModalTitle: document.getElementById('muteModalTitle'),
+      muteModalDesc: document.getElementById('muteModalDesc'),
+      btnCancelMuteModal: document.getElementById('btnCancelMuteModal'),
+      btnConfirmMuteModal: document.getElementById('btnConfirmMuteModal'),
+      editTitleModal: document.getElementById('editTitleModal'),
+      modalTitleInput: document.getElementById('modalTitleInput'),
+      modalDescInput: document.getElementById('modalDescInput'),
+      btnCancelTitleModal: document.getElementById('btnCancelTitleModal'),
+      btnSaveTitleModal: document.getElementById('btnSaveTitleModal'),
+      switchPcModal: document.getElementById('switchPcModal'),
+      currentHostText: document.getElementById('currentHostText'),
+      discoveryStatusText: document.getElementById('discoveryStatusText'),
+      qrScanInput: document.getElementById('qrScanInput'),
+      manualIpInput: document.getElementById('manualIpInput'),
+      btnConnectManualIp: document.getElementById('btnConnectManualIp'),
+      btnCloseSwitchPc: document.getElementById('btnCloseSwitchPc'),
+    };
+
+    // --- Tactile Feedback System (Haptic Vibration + High-Visibility Flash Backup) ---
+    // Essential for iOS Safari (which lacks Web Vibration API) and noisy control booths.
+    function triggerFeedback(element, type = 'tap') {
+      // 1. Hardware Haptic Vibrate (Android, supported browsers)
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try {
+          if (type === 'tap') navigator.vibrate(25);
+          else if (type === 'stage') navigator.vibrate(35);
+          else if (type === 'success') navigator.vibrate([40, 30, 40]);
+          else if (type === 'alert') navigator.vibrate([45, 40, 65]);
+        } catch (_) {}
+      }
+
+      // 2. Visual Tactile Flash (Guaranteed visual confirmation on all displays)
+      if (element && element.classList) {
+        const clsMap = {
+          tap: 'flash-tap',
+          stage: 'flash-stage',
+          success: 'flash-success',
+          alert: 'flash-alert'
+        };
+        const cls = clsMap[type] || 'flash-tap';
+        element.classList.remove('flash-tap', 'flash-stage', 'flash-success', 'flash-alert');
+        void element.offsetWidth; // Force synchronous reflow to restart animation reliably
+        element.classList.add(cls);
+        setTimeout(() => {
+          element.classList.remove(cls);
+        }, 380);
+      }
+    }
+
+    // Determine Host IP & Ports from URL, LocalStorage, or Bridge Defaults
+    const params = new URLSearchParams(window.location.search);
+    const savedIp = localStorage.getItem('simple_streamer_last_ip');
+    const paramHost = params.get('host');
+    const fallbackIp = params.get('fallback');
+    if (fallbackIp) {
+      localStorage.setItem('simple_streamer_fallback_ip', fallbackIp);
+    }
+
+    let hostIp = paramHost || window.location.hostname || 'simple-streamer.local';
+    if ((hostIp === '127.0.0.1' || hostIp === 'localhost' || !hostIp) && savedIp) {
+      hostIp = savedIp;
+    } else if (hostIp && hostIp !== '127.0.0.1' && hostIp !== 'localhost') {
+      localStorage.setItem('simple_streamer_last_ip', hostIp);
+    }
+
+    let obsPort = parseInt(params.get('port') || '4455', 10);
+    const bridgePort = parseInt(params.get('bridgePort') || '45455', 10);
+    let obsPass = params.get('pass') || '';
+    state.sessionPin = params.get('pin') || '';
+
+    // --- Network Mobility & Auto-Discovery Engine ---
+    let failedAttempts = 0;
+    let autoDiscoveryRunning = false;
+
+    function showSwitchPcModal() {
+      if (el.switchPcModal) {
+        if (el.currentHostText) el.currentHostText.textContent = hostIp;
+        el.switchPcModal.style.display = 'flex';
+      }
+    }
+
+    function hideSwitchPcModal() {
+      if (el.switchPcModal) el.switchPcModal.style.display = 'none';
+    }
+
+    async function probeBridge(targetHost) {
+      if (!targetHost) return null;
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 600);
+        const res = await fetch(`http://${targetHost}:${bridgePort}/remote-config`, {
+          mode: 'cors',
+          signal: controller.signal
+        });
+        clearTimeout(tid);
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg && cfg.ok) return cfg;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    async function startAutoDiscovery() {
+      if (autoDiscoveryRunning || state.isConnected) return;
+      autoDiscoveryRunning = true;
+      if (el.discoveryStatusText) el.discoveryStatusText.textContent = 'Probing simple-streamer.local...';
+
+      // 1. Try universal mDNS hostname simple-streamer.local
+      const mdnsRes = await probeBridge('simple-streamer.local');
+      if (mdnsRes) {
+        applyDiscoveredHost('simple-streamer.local', mdnsRes);
+        autoDiscoveryRunning = false;
+        return;
+      }
+
+      // 2. Discover active subnets dynamically from any modem / network configuration
+      const savedFallback = localStorage.getItem('simple_streamer_fallback_ip');
+      const potentialIps = [
+        fallbackIp,
+        savedFallback,
+        hostIp,
+        savedIp
+      ].filter(ip => ip && ip !== 'simple-streamer.local' && ip.includes('.'));
+
+      const subnets = new Set();
+      let lastKnownOctet = 5;
+
+      for (const ipStr of potentialIps) {
+        const parts = ipStr.split('.');
+        if (parts.length === 4) {
+          subnets.add(`${parts[0]}.${parts[1]}.${parts[2]}`);
+          const octet = parseInt(parts[3], 10);
+          if (!isNaN(octet) && octet > 1 && octet < 255) lastKnownOctet = octet;
+        }
+      }
+
+      // Fallback defaults covering 99% of home, office, and mosque routers worldwide
+      if (subnets.size === 0) {
+        subnets.add('192.168.1');
+        subnets.add('192.168.0');
+        subnets.add('10.0.0');
+      }
+
+      for (const subnet of subnets) {
+        if (state.isConnected) break;
+        if (el.discoveryStatusText) el.discoveryStatusText.textContent = `Scanning ${subnet}.* on network...`;
+
+        // Comprehensive search pool:
+        // A) Immediate neighborhood of last known IP (±25)
+        // B) Standard low DHCP pool (2..40)
+        // C) Standard mid/high DHCP pools (100..150, 200..230)
+        const candidates = new Set();
+        for (let o = Math.max(2, lastKnownOctet - 25); o <= Math.min(254, lastKnownOctet + 25); o++) {
+          candidates.add(`${subnet}.${o}`);
+        }
+        for (let o = 2; o <= 40; o++) candidates.add(`${subnet}.${o}`);
+        for (let o = 100; o <= 150; o++) candidates.add(`${subnet}.${o}`);
+        for (let o = 200; o <= 230; o++) candidates.add(`${subnet}.${o}`);
+
+        const candidateList = Array.from(candidates).filter(ip => ip !== hostIp);
+
+        // Probe in parallel chunks of 10 for rapid sub-second resolution
+        for (let i = 0; i < candidateList.length; i += 10) {
+          if (state.isConnected) break;
+          const chunk = candidateList.slice(i, i + 10);
+          const results = await Promise.all(
+            chunk.map(ip => probeBridge(ip).then(cfg => cfg ? { ip, cfg } : null))
+          );
+          const found = results.find(r => r !== null);
+          if (found) {
+            applyDiscoveredHost(found.ip, found.cfg);
+            autoDiscoveryRunning = false;
+            return;
+          }
+        }
+      }
+
+      if (el.discoveryStatusText) el.discoveryStatusText.textContent = 'Could not auto-detect OBS. Scan QR or enter IP.';
+      autoDiscoveryRunning = false;
+    }
+
+    function applyDiscoveredHost(newHost, cfg) {
+      hostIp = newHost;
+      localStorage.setItem('simple_streamer_last_ip', newHost);
+      if (el.currentHostText) el.currentHostText.textContent = newHost;
+      if (cfg) {
+        if (cfg.obsPass) obsPass = cfg.obsPass;
+        if (cfg.obsPort) obsPort = cfg.obsPort;
+        if (cfg.title) {
+          state.title = cfg.title;
+          el.streamTitleDisplay.textContent = cfg.title;
+        }
+        if (cfg.description !== undefined) {
+          state.description = cfg.description;
+          if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
+        }
+        if (cfg.destinations && Array.isArray(cfg.destinations)) {
+          state.destinations = cfg.destinations;
+          renderDestinationsPills(cfg.destinations);
+        }
+      }
+      hideSwitchPcModal();
+      connectObs();
+    }
+
+    // --- Authentication Challenge Handler ---
+    async function getAuthResponse(salt, challenge) {
+      try {
+        const s = encodeURIComponent(salt);
+        const c = encodeURIComponent(challenge);
+        const res = await fetch(`http://${hostIp}:${bridgePort}/auth-challenge?salt=${s}&challenge=${c}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.authResponse) return data.authResponse;
+        }
+      } catch (err) {
+        console.warn('Bridge auth fetch error:', err);
+      }
+      return null;
+    }
+
+    // --- Initialization & Config Fetching ---
+    async function initConfig() {
+      if (el.currentHostText) el.currentHostText.textContent = hostIp;
+      let cfg = await probeBridge(hostIp);
+      if (!cfg && hostIp !== 'simple-streamer.local') {
+        cfg = await probeBridge('simple-streamer.local');
+        if (cfg) {
+          hostIp = 'simple-streamer.local';
+          localStorage.setItem('simple_streamer_last_ip', hostIp);
+          if (el.currentHostText) el.currentHostText.textContent = hostIp;
+        }
+      }
+
+      if (cfg) {
+        if (cfg.obsPass) obsPass = cfg.obsPass;
+        if (cfg.obsPort) obsPort = cfg.obsPort;
+        if (cfg.title) {
+          state.title = cfg.title;
+          el.streamTitleDisplay.textContent = cfg.title;
+        }
+        if (cfg.description !== undefined) {
+          state.description = cfg.description;
+          if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
+        }
+        if (cfg.destinations && Array.isArray(cfg.destinations)) {
+          state.destinations = cfg.destinations;
+          renderDestinationsPills(cfg.destinations);
+        }
+        hideSwitchPcModal();
+      } else {
+        startAutoDiscovery();
+      }
+      connectObs();
+    }
+
+    // --- WebSocket Communication Engine ---
+    function sendWs(op, d) {
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+      state.ws.send(JSON.stringify({ op, d }));
+    }
+
+    function callWs(requestType, requestData = {}) {
+      return new Promise((resolve, reject) => {
+        const requestId = 'req_' + (state.reqId++);
+        state.pendingRequests.set(requestId, { resolve, reject });
+        sendWs(6, { requestType, requestId, requestData });
+        setTimeout(() => {
+          if (state.pendingRequests.has(requestId)) {
+            state.pendingRequests.delete(requestId);
+            reject(new Error(`Timeout calling ${requestType}`));
+          }
+        }, 5000);
+      });
+    }
+
+    function connectObs() {
+      setConnectionStatus('connecting');
+      try {
+        state.ws = new WebSocket(`ws://${hostIp}:${obsPort}`);
+      } catch (err) {
+        setConnectionStatus('error');
+        setTimeout(connectObs, 3000);
+        return;
+      }
+
+      state.ws.onopen = () => setConnectionStatus('connecting');
+
+      state.ws.onclose = () => {
+        state.isConnected = false;
+        state.isIdentified = false;
+        setConnectionStatus('error');
+        stopPreviewLoop();
+        if (state.isPageVisible) {
+          failedAttempts++;
+          if (failedAttempts >= 2) {
+            startAutoDiscovery();
+          }
+          if (failedAttempts >= 4) {
+            showSwitchPcModal();
+          }
+        }
+        setTimeout(connectObs, 2500);
+      };
+
+      state.ws.onerror = () => {
+        state.isConnected = false;
+        setConnectionStatus('error');
+      };
+
+      state.ws.onmessage = async (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          const { op, d } = msg;
+
+          // OpCode 0: Hello
+          if (op === 0) {
+            let authResponse = undefined;
+            if (d.authentication) {
+              authResponse = await getAuthResponse(d.authentication.salt, d.authentication.challenge);
+            }
+            const identifyMsg = {
+              op: 1,
+              d: {
+                rpcVersion: 1,
+                eventSubscriptions: 66559, // Scenes (4), Outputs (64), Vendors (512), General (1), VolumeMeters (65536)
+              },
+            };
+            if (authResponse) identifyMsg.d.authentication = authResponse;
+            sendWs(1, identifyMsg.d);
+          }
+
+          // OpCode 2: Identified
+          else if (op === 2) {
+            state.isConnected = true;
+            state.isIdentified = true;
+            failedAttempts = 0;
+            hideSwitchPcModal();
+            setConnectionStatus('connected');
+            syncWithDock();
+            initAudioMonitor();
+            fetchScenesList();
+            startPreviewLoop();
+            pollStreamStats();
+          }
+
+          // OpCode 7: RequestResponse
+          else if (op === 7) {
+            const req = state.pendingRequests.get(d.requestId);
+            if (req) {
+              state.pendingRequests.delete(d.requestId);
+              if (d.requestStatus && d.requestStatus.result) {
+                req.resolve(d.responseData || {});
+              } else {
+                req.reject(new Error(d.requestStatus?.comment || 'OBS Error'));
+              }
+            }
+          }
+
+          // OpCode 5: Event
+          else if (op === 5) {
+            handleObsEvent(d);
+          }
+        } catch (_) {}
+      };
+    }
+
+    function handleObsEvent(d) {
+      if (d.eventType === 'StreamStateChanged') {
+        setStreamLiveState(d.eventData.outputActive);
+      } else if (d.eventType === 'CurrentProgramSceneChanged') {
+        const newScene = d.eventData.sceneName || d.eventData.currentProgramSceneName;
+        state.currentScene = newScene;
+        if (state.stagedScene === newScene) {
+          state.stagedScene = null;
+          if (state.stageTimer) clearTimeout(state.stageTimer);
+          if (el.stagingConfirmBox) el.stagingConfirmBox.style.display = 'none';
+        }
+        updateSceneUi();
+        fetchPreviewFrame();
+      } else if (d.eventType === 'CurrentPreviewSceneChanged') {
+        const prevScene = d.eventData.sceneName || d.eventData.currentPreviewSceneName;
+        if (prevScene && prevScene !== state.currentScene && prevScene !== state.stagedScene) {
+          state.stagedScene = prevScene;
+          if (el.stagingText) el.stagingText.textContent = `Stage: ${prevScene}`;
+          if (el.stagingConfirmBox) el.stagingConfirmBox.style.display = 'flex';
+          updateSceneUi();
+          fetchPreviewFrame(prevScene);
+          if (state.stageTimer) clearTimeout(state.stageTimer);
+          state.stageTimer = setTimeout(cancelStaging, 10000);
+        }
+      } else if (d.eventType === 'InputVolumeMeters') {
+        handleVolumeMeters(d.eventData.inputs || []);
+      } else if (d.eventType === 'InputMuteStateChanged') {
+        if (!state.audioInputName || d.eventData.inputName === state.audioInputName) {
+          state.audioMuted = !!d.eventData.inputMuted;
+          updateMuteButtonUi();
+        }
+      } else if (d.eventType === 'CustomEvent') {
+        const data = d.eventData;
+        if (!data) return;
+        if (data.action === 'LIVE_START_FAILED') {
+          state.isPreparing = false;
+          if (state.liveSafetyTimer) clearTimeout(state.liveSafetyTimer);
+          resetSlider();
+          triggerFeedback(el.sliderTrack, 'alert');
+          alert('Stream Failed: ' + (data.error || 'Could not start broadcast in OBS.'));
+        } else if (data.action === 'SYNC_RESPONSE' || data.action === 'METADATA_CHANGED') {
+          if (data.title !== undefined && data.title) {
+            state.title = data.title;
+            el.streamTitleDisplay.textContent = data.title;
+          }
+          if (data.description !== undefined) {
+            state.description = data.description;
+            if (el.streamDescDisplay) el.streamDescDisplay.textContent = data.description;
+          }
+          if (data.destinations && Array.isArray(data.destinations)) {
+            if (!state.destinations || state.destinations.length === 0) {
+              state.destinations = data.destinations;
+            } else {
+              data.destinations.forEach((rd) => {
+                const local = state.destinations.find((ld) => ld.id === rd.id || ld.name === rd.name || ld.platform === rd.platform);
+                if (local) {
+                  local.enabled = rd.enabled;
+                } else {
+                  state.destinations.push(rd);
+                }
+              });
+            }
+            renderDestinationsPills(state.destinations);
+          }
+          if (data.isLive !== undefined) setStreamLiveState(data.isLive);
+        }
+      }
+    }
+
+    // --- State Handshake with OBS Dock ---
+    // --- State Handshake with OBS Dock & Local Bridge ---
+    async function syncWithDock() {
+      // 1. HTTP Bridge sync (reliable LAN response, catches external edits)
+      if (state.isPageVisible && hostIp) {
+        try {
+          const res = await fetch(`http://${hostIp}:${bridgePort}/remote-config`);
+          if (res.ok) {
+            const cfg = await res.json();
+            if (cfg && cfg.ok) {
+              if (cfg.title !== undefined && cfg.title !== state.title) {
+                state.title = cfg.title;
+                if (el.streamTitleDisplay) el.streamTitleDisplay.textContent = cfg.title || 'Untitled Broadcast';
+              }
+              if (cfg.description !== undefined && cfg.description !== state.description) {
+                state.description = cfg.description;
+                if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
+              }
+              if (cfg.destinations && Array.isArray(cfg.destinations)) {
+                let changed = false;
+                if (!state.destinations || state.destinations.length !== cfg.destinations.length) {
+                  state.destinations = cfg.destinations;
+                  changed = true;
+                } else {
+                  cfg.destinations.forEach((cd) => {
+                    const local = state.destinations.find((ld) => ld.id === cd.id || ld.platform === cd.platform);
+                    if (local && local.enabled !== cd.enabled) {
+                      local.enabled = cd.enabled;
+                      changed = true;
+                    }
+                  });
+                }
+                if (changed) {
+                  renderDestinationsPills(state.destinations);
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Real-time OBS WebSocket query
+      if (state.isConnected && state.isIdentified && state.isPageVisible) {
+        try {
+          await callWs('BroadcastCustomEvent', {
+            eventData: { action: 'SYNC_REQUEST' }
+          });
+        } catch (_) {}
+      }
+    }
+
+    setInterval(syncWithDock, 1500);
+
+    function renderDestinationsPills(targets) {
+      if (!el.destinationsRow) return;
+      el.destinationsRow.innerHTML = '';
+      if (!targets || targets.length === 0) {
+        el.destinationsRow.innerHTML = '<span class="platform-pill disabled" style="cursor:default;">No platforms configured</span>';
+        return;
+      }
+      targets.forEach(t => {
+        const isEnabled = t.enabled !== false;
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'platform-pill ' + (isEnabled ? 'active' : 'disabled') + (state.isStreaming ? ' locked' : '');
+        pill.title = state.isStreaming ? 'Target platforms locked during live broadcast' : `Tap to ${isEnabled ? 'disable' : 'enable'} ${t.name || t.platform}`;
+        pill.innerHTML = `<span class="platform-dot ${isEnabled ? '' : 'disabled'}"></span> ${t.name || t.platform}`;
+
+        pill.onclick = async () => {
+          if (state.isStreaming) {
+            triggerFeedback(pill, 'alert');
+            return;
+          }
+          // Dual-tier tactile feedback (flash + haptic)
+          triggerFeedback(pill, isEnabled ? 'tap' : 'success');
+
+          // Optimistic local toggle
+          t.enabled = !isEnabled;
+          renderDestinationsPills(targets);
+
+          // 1. Broadcast change to OBS Studio Dock via WebSocket
+          try {
+            await callWs('BroadcastCustomEvent', {
+              eventData: {
+                action: 'TOGGLE_DESTINATION',
+                id: t.id,
+                enabled: t.enabled
+              }
+            });
+          } catch (err) {
+            console.error('Toggle destination error:', err);
+          }
+
+          // 2. Persist directly to Bridge HTTP state
+          try {
+            fetch(`http://${hostIp}:${bridgePort}/toggle-destination?id=${encodeURIComponent(t.id)}&enabled=${t.enabled ? 1 : 0}`).catch(() => {});
+          } catch (_) {}
+        };
+
+        el.destinationsRow.appendChild(pill);
+      });
+    }
+
+    // --- 1. Confidence Video Preview Engine ---
+    async function fetchPreviewFrame(targetOverride) {
+      if (!state.isIdentified || !state.isPageVisible) return;
+      try {
+        const target = targetOverride || state.stagedScene || state.currentScene;
+        if (!target) {
+          const sceneRes = await callWs('GetCurrentProgramScene');
+          if (sceneRes && (sceneRes.currentProgramSceneName || sceneRes.sceneName)) {
+            state.currentScene = sceneRes.currentProgramSceneName || sceneRes.sceneName;
+            updateSceneUi();
+          }
+        }
+        const activeTarget = targetOverride || state.stagedScene || state.currentScene;
+        if (!activeTarget) return;
+
+        const res = await callWs('GetSourceScreenshot', {
+          sourceName: activeTarget,
+          imageFormat: 'jpeg',
+          imageWidth: 640,
+          imageHeight: 360,
+          imageCompressionQuality: 50
+        });
+        if (res && res.imageData) {
+          el.videoFrame.src = res.imageData;
+          el.videoFrame.style.display = 'block';
+          el.videoPlaceholder.style.display = 'none';
+        }
+      } catch (_) {}
+    }
+
+    function startPreviewLoop() {
+      stopPreviewLoop();
+      const interval = state.isStreaming ? 5000 : 1000;
+      fetchPreviewFrame();
+      state.previewTimer = setInterval(fetchPreviewFrame, interval);
+    }
+
+    function stopPreviewLoop() {
+      if (state.previewTimer) {
+        clearInterval(state.previewTimer);
+        state.previewTimer = null;
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      state.isPageVisible = !document.hidden;
+      if (state.isPageVisible) {
+        failedAttempts = 0;
+        hideSwitchPcModal();
+        if (!state.isConnected) {
+          connectObs();
+        }
+        syncWithDock();
+        startPreviewLoop();
+      } else {
+        stopPreviewLoop();
+      }
+    });
+
+    // --- 2. Composite Audio Engine & 5-Second Silence Alert ---
+    async function initAudioMonitor() {
+      try {
+        const res = await callWs('GetInputList');
+        if (res && res.inputs) {
+          const mic = res.inputs.find(i => i.inputName.toLowerCase().includes('pd400')) ||
+                     res.inputs.find(i => i.inputName.toLowerCase().includes('mic')) ||
+                     res.inputs.find(i => i.inputName.toLowerCase().includes('audio'));
+          if (mic) {
+            state.audioInputName = mic.inputName;
+            const muteRes = await callWs('GetInputMute', { inputName: mic.inputName });
+            if (muteRes) {
+              state.audioMuted = !!muteRes.inputMuted;
+              updateMuteButtonUi();
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    function handleVolumeMeters(inputs) {
+      if (!state.isPageVisible || !inputs || inputs.length === 0) return;
+
+      let masterPeak = 0;
+      let activeName = '';
+      for (const inp of inputs) {
+        if (!inp.inputLevelsMul || inp.inputLevelsMul.length === 0) continue;
+        const p = Math.max(0, ...inp.inputLevelsMul.map(ch => ch[1] || 0));
+        if (p > masterPeak) {
+          masterPeak = p;
+          activeName = inp.inputName;
+        }
+      }
+
+      // 5-Second Silence / Dead-Air Alert
+      const SILENCE_THRESHOLD = 0.001;
+      if (masterPeak <= SILENCE_THRESHOLD) {
+        if (!state.silenceStart) state.silenceStart = Date.now();
+        if (Date.now() - state.silenceStart >= 5000) state.isSilenceAlert = true;
+      } else {
+        state.silenceStart = null;
+        state.isSilenceAlert = false;
+      }
+
+      updateAudioVisuals(masterPeak, activeName);
+    }
+
+    function updateAudioVisuals(masterPeak, activeName) {
+      if (state.isSilenceAlert) {
+        el.audioStrip.classList.add('alert');
+        el.silenceAlertTag.style.display = 'inline-block';
+        el.audioLevelFill.style.width = '0%';
+        el.audioDbReadout.textContent = 'NO SOUND (5s+)';
+        el.audioDbReadout.style.color = 'var(--accent-red)';
+        return;
+      }
+
+      el.audioStrip.classList.remove('alert');
+      el.silenceAlertTag.style.display = 'none';
+
+      if (state.audioMuted) {
+        el.audioLevelFill.classList.add('muted');
+        el.audioLevelFill.style.width = '0%';
+        el.audioDbReadout.textContent = 'MUTED';
+        el.audioDbReadout.style.color = 'var(--accent-red)';
+        return;
+      }
+
+      el.audioLevelFill.classList.remove('muted');
+      if (activeName && masterPeak > 0.002) {
+        el.audioName.textContent = activeName.toUpperCase();
+      } else {
+        el.audioName.textContent = 'MASTER AUDIO';
+      }
+
+      const db = masterPeak > 0.0001 ? (20 * Math.log10(masterPeak)) : -60;
+      const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+      el.audioLevelFill.style.width = pct + '%';
+      el.audioDbReadout.textContent = db <= -58 ? '-∞ dB' : `${db.toFixed(1)} dB`;
+      el.audioDbReadout.style.color = db > -9 ? 'var(--accent-red)' : (db > -20 ? 'var(--accent-amber)' : 'var(--text-dim)');
+    }
+
+    function updateMuteButtonUi() {
+      if (!el.btnMicMute) return;
+      if (state.audioMuted) {
+        el.btnMicMute.classList.add('is-muted');
+        el.micMuteIcon.textContent = '🔇';
+        el.micMuteLabel.textContent = 'UNMUTE';
+      } else {
+        el.btnMicMute.classList.remove('is-muted');
+        el.micMuteIcon.textContent = '🎙️';
+        el.micMuteLabel.textContent = 'MUTE';
+      }
+    }
+
+    // Mic Mute Confirmation Modal Handlers
+    el.btnMicMute.onclick = () => {
+      if (state.audioMuted) {
+        // Direct unmute (convenient and safe)
+        triggerFeedback(el.btnMicMute, 'success');
+        executeMuteToggle();
+      } else {
+        // Safe confirm modal before muting
+        triggerFeedback(el.btnMicMute, 'tap');
+        el.muteModalTitle.textContent = 'Mute Microphone?';
+        el.muteModalDesc.textContent = 'Are you sure you want to silence all audio going to OBS and the broadcast?';
+        el.btnConfirmMuteModal.textContent = 'Yes, Mute Audio';
+        el.muteConfirmModal.style.display = 'flex';
+      }
+    };
+
+    el.btnCancelMuteModal.onclick = () => {
+      triggerFeedback(el.btnCancelMuteModal, 'tap');
+      el.muteConfirmModal.style.display = 'none';
+    };
+
+    el.btnConfirmMuteModal.onclick = () => {
+      triggerFeedback(el.btnConfirmMuteModal, 'alert');
+      triggerFeedback(el.btnMicMute, 'alert');
+      el.muteConfirmModal.style.display = 'none';
+      executeMuteToggle();
+    };
+
+    async function executeMuteToggle() {
+      try {
+        if (state.audioInputName) {
+          await callWs('ToggleInputMute', { inputName: state.audioInputName });
+        } else {
+          const res = await callWs('GetInputList');
+          if (res && res.inputs) {
+            const mics = res.inputs.filter(i => 
+              i.inputName.toLowerCase().includes('pd400') ||
+              i.inputName.toLowerCase().includes('mic') ||
+              (i.unversionedInputKind && i.unversionedInputKind.includes('input_capture'))
+            );
+            for (const m of mics) {
+              await callWs('ToggleInputMute', { inputName: m.inputName });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Mute toggle error:', err);
+      }
+    }
+
+    // --- 3. Scene Director (2-Step Safety Cut) ---
+    async function fetchScenesList() {
+      try {
+        const res = await callWs('GetSceneList');
+        if (res && res.scenes) {
+          state.scenes = res.scenes;
+          if (res.currentProgramSceneName) state.currentScene = res.currentProgramSceneName;
+          renderSceneTiles();
+          updateSceneUi();
+        }
+      } catch (e) {
+        console.warn('Fetch scenes notice:', e);
+      }
+    }
+
+    function renderSceneTiles() {
+      if (!el.sceneGrid) return;
+      el.sceneGrid.innerHTML = '';
+      if (!state.scenes || state.scenes.length === 0) {
+        el.sceneGrid.innerHTML = '<div class="scene-tile"><span class="scene-tile-name">No Scenes</span></div>';
+        return;
+      }
+
+      state.scenes.forEach(s => {
+        const name = s.sceneName;
+        const isLive = (name === state.currentScene);
+        const isStaged = (name === state.stagedScene);
+
+        const tile = document.createElement('div');
+        tile.className = 'scene-tile' + (isLive ? ' live-active' : '') + (isStaged ? ' staged' : '');
+        tile.dataset.scene = name;
+
+        tile.innerHTML = `
+          <span class="scene-tile-name">${name}</span>
+          <span class="scene-tile-sub">${isLive ? '● ON AIR' : (isStaged ? 'QUEUED' : 'Tap to Stage')}</span>
+        `;
+
+        tile.onclick = () => {
+          if (name === state.currentScene) {
+            triggerFeedback(tile, 'tap');
+            cancelStaging();
+            return;
+          }
+          if (state.stagedScene === name) {
+            // Second tap on already staged scene acts as instant CUT confirmation!
+            executeSceneCut(name, tile);
+          } else {
+            // Stage scene for safety confirmation
+            stageSceneForCut(name, tile);
+          }
+        };
+
+        el.sceneGrid.appendChild(tile);
+      });
+    }
+
+    async function stageSceneForCut(sceneName, tile) {
+      triggerFeedback(tile || el.stagingConfirmBox, 'stage');
+      state.stagedScene = sceneName;
+      el.stagingText.textContent = `Stage: ${sceneName}`;
+      el.stagingConfirmBox.style.display = 'flex';
+
+      // 1. Tell OBS Studio to stage scene in Preview (left side in Studio Mode)
+      try {
+        await callWs('SetCurrentPreviewScene', { sceneName });
+      } catch (_) {}
+
+      // 2. Immediately update HUD and show preview of staged scene
+      updateSceneUi();
+      fetchPreviewFrame(sceneName);
+
+      // Auto cancel staging after 10 seconds of inactivity
+      if (state.stageTimer) clearTimeout(state.stageTimer);
+      state.stageTimer = setTimeout(cancelStaging, 10000);
+    }
+
+    async function cancelStaging() {
+      state.stagedScene = null;
+      if (state.stageTimer) {
+        clearTimeout(state.stageTimer);
+        state.stageTimer = null;
+      }
+      el.stagingConfirmBox.style.display = 'none';
+      updateSceneUi();
+      // Restore OBS preview scene back to current program scene if in studio mode
+      if (state.currentScene) {
+        callWs('SetCurrentPreviewScene', { sceneName: state.currentScene }).catch(() => {});
+      }
+      fetchPreviewFrame();
+    }
+
+    async function executeSceneCut(sceneName, triggerEl) {
+      triggerFeedback(triggerEl || el.btnConfirmCut, 'success');
+      state.stagedScene = null;
+      if (state.stageTimer) {
+        clearTimeout(state.stageTimer);
+        state.stageTimer = null;
+      }
+      el.stagingConfirmBox.style.display = 'none';
+
+      try {
+        // Trigger Studio Mode Transition (Cut / Fade) if in studio mode, with fallback
+        try {
+          await callWs('TriggerStudioModeTransition');
+        } catch (_) {
+          await callWs('SetCurrentProgramScene', { sceneName });
+        }
+        await callWs('SetCurrentProgramScene', { sceneName }).catch(() => {});
+
+        state.currentScene = sceneName;
+        updateSceneUi();
+        fetchPreviewFrame(sceneName);
+      } catch (err) {
+        alert('Could not switch scene: ' + err.message);
+      }
+    }
+
+    el.btnCancelStage.onclick = () => {
+      triggerFeedback(el.btnCancelStage, 'tap');
+      cancelStaging();
+    };
+
+    el.btnConfirmCut.onclick = () => {
+      if (state.stagedScene) executeSceneCut(state.stagedScene, el.btnConfirmCut);
+    };
+
+    function updateSceneUi() {
+      if (state.stagedScene) {
+        if (el.videoBadge) {
+          el.videoBadge.className = 'hud-badge-left staged';
+        }
+        if (el.badgeStatus) el.badgeStatus.textContent = 'STAGED PREVIEW';
+        if (el.hudSceneTag) {
+          el.hudSceneTag.textContent = `STAGED: ${state.stagedScene}`;
+          el.hudSceneTag.style.background = 'rgba(245, 158, 11, 0.9)';
+          el.hudSceneTag.style.color = '#000';
+          el.hudSceneTag.style.borderColor = 'rgba(245, 158, 11, 0.8)';
+        }
+        if (el.videoPlaceholder) {
+          const phSpan = el.videoPlaceholder.querySelector('span');
+          if (phSpan) phSpan.textContent = `Loading Preview: ${state.stagedScene}...`;
+        }
+      } else {
+        if (el.videoBadge) {
+          el.videoBadge.className = state.isStreaming ? 'hud-badge-left live' : 'hud-badge-left';
+        }
+        if (el.badgeStatus) el.badgeStatus.textContent = state.isStreaming ? 'LIVE' : 'STANDBY';
+        if (el.hudSceneTag) {
+          el.hudSceneTag.textContent = state.currentScene || 'NONE';
+          el.hudSceneTag.style.background = 'rgba(10, 12, 16, 0.85)';
+          el.hudSceneTag.style.color = '#93c5fd';
+          el.hudSceneTag.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+        }
+        if (el.videoPlaceholder) {
+          const phSpan = el.videoPlaceholder.querySelector('span');
+          if (phSpan) phSpan.textContent = 'Awaiting OBS Program...';
+        }
+      }
+      if (el.directorCurrentTag) el.directorCurrentTag.textContent = `LIVE: ${state.currentScene || 'NONE'}`;
+      renderSceneTiles();
+    }
+
+    // --- 4. Title & Setup Management ---
+    el.btnEditTitle.onclick = () => {
+      triggerFeedback(el.btnEditTitle, 'tap');
+      el.modalTitleInput.value = state.title || '';
+      if (el.modalDescInput) el.modalDescInput.value = state.description || '';
+      el.editTitleModal.style.display = 'flex';
+      el.modalTitleInput.focus();
+    };
+
+    el.btnCancelTitleModal.onclick = () => {
+      triggerFeedback(el.btnCancelTitleModal, 'tap');
+      el.editTitleModal.style.display = 'none';
+    };
+
+    el.btnSaveTitleModal.onclick = async () => {
+      triggerFeedback(el.btnSaveTitleModal, 'success');
+      const val = el.modalTitleInput.value.trim();
+      const descVal = el.modalDescInput ? el.modalDescInput.value.trim() : '';
+      if (val) {
+        state.title = val;
+        el.streamTitleDisplay.textContent = val;
+      }
+      state.description = descVal;
+      if (el.streamDescDisplay) el.streamDescDisplay.textContent = descVal;
+
+      // Persist to bridge state
+      const saveUrl = `http://${hostIp}:${bridgePort}/save-title?title=${encodeURIComponent(state.title || '')}&description=${encodeURIComponent(state.description || '')}`;
+      fetch(saveUrl).catch(() => {});
+
+      // Broadcast to OBS Dock
+      callWs('BroadcastCustomEvent', {
+        eventData: { action: 'UPDATE_DETAILS', title: state.title, description: state.description }
+      }).catch(() => {});
+
+      el.editTitleModal.style.display = 'none';
+    };
+
+    // --- 5. UI Connection & Live Status ---
+    function setConnectionStatus(type) {
+      el.connDot.className = 'conn-dot';
+      if (type === 'connected') {
+        el.connDot.classList.add(state.isStreaming ? 'live' : 'connected');
+        el.connText.textContent = state.isStreaming ? 'LIVE' : 'CONNECTED';
+      } else if (type === 'connecting') {
+        el.connText.textContent = 'CONNECTING';
+      } else {
+        el.connDot.classList.add('error');
+        el.connText.textContent = 'OFFLINE';
+      }
+    }
+
+    function setStreamLiveState(isLive) {
+      const changed = state.isStreaming !== isLive;
+      state.isStreaming = isLive;
+      state.isPreparing = false;
+      if (state.liveSafetyTimer) clearTimeout(state.liveSafetyTimer);
+
+      if (isLive) {
+        el.videoBadge.className = 'hud-badge-left live';
+        el.badgeStatus.textContent = 'LIVE';
+        el.sliderTrack.classList.add('live');
+        el.sliderLabel.textContent = 'SLIDE TO STOP ❯❯';
+      } else {
+        el.videoBadge.className = 'hud-badge-left';
+        el.badgeStatus.textContent = 'STANDBY';
+        el.sliderTrack.classList.remove('live');
+        el.sliderLabel.textContent = 'SLIDE TO GO LIVE ❯❯';
+      }
+
+      setConnectionStatus('connected');
+      resetSlider();
+      renderDestinationsPills(state.destinations);
+      if (changed) startPreviewLoop();
+    }
+
+    // Stream Telemetry Polling
+    async function pollStreamStats() {
+      if (!state.isIdentified) return;
+      try {
+        const status = await callWs('GetStreamStatus');
+        if (status) {
+          setStreamLiveState(status.outputActive);
+          if (status.outputActive) {
+            const kbps = Math.round((status.outputBytes * 8) / (status.outputDuration / 1000) / 1024) || 0;
+            el.metricBitrate.textContent = `${kbps} kbps`;
+            el.metricFps.textContent = Math.round(status.outputFps || 0);
+            const total = status.outputTotalFrames || 1;
+            const skipped = status.outputSkippedFrames || 0;
+            el.metricDropped.textContent = `${((skipped / total) * 100).toFixed(1)}%`;
+            el.metricUptime.textContent = formatDuration(Math.floor(status.outputDuration / 1000));
+          } else {
+            el.metricBitrate.textContent = '0 kbps';
+            el.metricFps.textContent = '0';
+            el.metricDropped.textContent = '0%';
+            el.metricUptime.textContent = '00:00:00';
+          }
+        }
+      } catch (_) {}
+      setTimeout(pollStreamStats, 2000);
+    }
+
+    function formatDuration(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+    }
+
+    // --- 6. Slide-to-Confirm Gesture Engine ---
+    function initSlider() {
+      const track = el.sliderTrack;
+      const thumb = el.sliderThumb;
+      const fill = el.sliderFill;
+
+      function onTouchStart(e) {
+        state.sliderDragging = true;
+        state.sliderStartX = (e.touches ? e.touches[0].clientX : e.clientX);
+        state.sliderMaxDrag = track.clientWidth - thumb.clientWidth - 8;
+        thumb.style.transition = 'none';
+        fill.style.transition = 'none';
+      }
+
+      function onTouchMove(e) {
+        if (!state.sliderDragging) return;
+        const currentX = (e.touches ? e.touches[0].clientX : e.clientX);
+        let delta = currentX - state.sliderStartX;
+        delta = Math.max(0, Math.min(delta, state.sliderMaxDrag));
+        state.sliderCurrentX = delta;
+
+        thumb.style.transform = `translateX(${delta}px)`;
+        fill.style.width = `${delta + 22}px`;
+
+        const progress = delta / state.sliderMaxDrag;
+        el.sliderLabel.style.opacity = String(Math.max(0, 1 - progress * 1.5));
+      }
+
+      async function onTouchEnd() {
+        if (!state.sliderDragging) return;
+        state.sliderDragging = false;
+
+        const progress = state.sliderCurrentX / state.sliderMaxDrag;
+        if (progress > 0.82) {
+          const feedbackType = state.isStreaming ? 'alert' : 'success';
+          triggerFeedback(thumb, feedbackType);
+          triggerFeedback(el.sliderTrack, feedbackType);
+          thumb.style.transform = `translateX(${state.sliderMaxDrag}px)`;
+          fill.style.width = '100%';
+          el.sliderLabel.textContent = 'PLEASE WAIT...';
+          el.sliderLabel.style.opacity = '1';
+
+          if (state.isStreaming) {
+            resetSlider();
+            triggerFeedback(el.sliderTrack, 'alert');
+            if (el.endLiveModal) el.endLiveModal.style.display = 'flex';
+          } else {
+            await triggerRemoteGoLive();
+          }
+        } else {
+          resetSlider();
+        }
+      }
+
+      thumb.addEventListener('touchstart', onTouchStart, { passive: true });
+      window.addEventListener('touchmove', onTouchMove, { passive: true });
+      window.addEventListener('touchend', onTouchEnd);
+
+      thumb.addEventListener('mousedown', onTouchStart);
+      window.addEventListener('mousemove', onTouchMove);
+      window.addEventListener('mouseup', onTouchEnd);
+    }
+
+    function resetSlider() {
+      el.sliderThumb.style.transition = 'transform 0.25s ease-out';
+      el.sliderFill.style.transition = 'width 0.25s ease-out';
+      el.sliderThumb.style.transform = 'translateX(0px)';
+      el.sliderFill.style.width = '0px';
+      el.sliderLabel.style.opacity = '1';
+      state.sliderCurrentX = 0;
+    }
+
+    async function triggerRemoteGoLive() {
+      const activeDests = (state.destinations || []).filter(d => d.enabled !== false);
+      if (state.destinations && state.destinations.length > 0 && activeDests.length === 0) {
+        alert('Please enable at least one target platform before going live.');
+        resetSlider();
+        return;
+      }
+      state.isPreparing = true;
+      if (state.liveSafetyTimer) clearTimeout(state.liveSafetyTimer);
+      state.liveSafetyTimer = setTimeout(() => {
+        if (state.isPreparing && !state.isStreaming) {
+          state.isPreparing = false;
+          resetSlider();
+        }
+      }, 25000);
+      try {
+        await callWs('BroadcastCustomEvent', {
+          eventData: {
+            action: 'REMOTE_GO_LIVE',
+            titleOverride: state.title || null,
+            pin: state.sessionPin
+          }
+        });
+      } catch (err) {
+        if (state.liveSafetyTimer) clearTimeout(state.liveSafetyTimer);
+        alert('Could not reach OBS Dock: ' + err.message);
+        resetSlider();
+      }
+    }
+
+    async function triggerRemoteStop() {
+      try {
+        await callWs('BroadcastCustomEvent', {
+          eventData: { action: 'REMOTE_STOP', pin: state.sessionPin }
+        });
+      } catch (err) {
+        alert('Could not stop broadcast: ' + err.message);
+        resetSlider();
+      }
+    }
+
+    if (el.btnCancelEndLiveModal) {
+      el.btnCancelEndLiveModal.onclick = () => {
+        triggerFeedback(el.btnCancelEndLiveModal, 'tap');
+        el.endLiveModal.style.display = 'none';
+      };
+    }
+
+    if (el.btnConfirmEndLiveModal) {
+      el.btnConfirmEndLiveModal.onclick = async () => {
+        triggerFeedback(el.btnConfirmEndLiveModal, 'alert');
+        el.endLiveModal.style.display = 'none';
+        await triggerRemoteStop();
+      };
+    }
+
+    // --- PWA Installation & Service Worker ---
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (el.btnInstallApp) {
+        el.btnInstallApp.style.display = 'inline-flex';
+        el.btnInstallApp.onclick = async () => {
+          triggerFeedback(el.btnInstallApp, 'tap');
+          el.btnInstallApp.style.display = 'none';
+          deferredPrompt.prompt();
+          try { await deferredPrompt.userChoice; } catch (_) {}
+          deferredPrompt = null;
+        };
+      }
+    });
+
+    window.addEventListener('appinstalled', () => {
+      if (el.btnInstallApp) el.btnInstallApp.style.display = 'none';
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+
+    // --- Switch PC / Reconnect UI Handlers ---
+    if (el.connBadge) {
+      el.connBadge.style.cursor = 'pointer';
+      el.connBadge.title = 'Tap to switch PC / Wi-Fi settings';
+      el.connBadge.onclick = () => {
+        triggerFeedback(el.connBadge, 'tap');
+        showSwitchPcModal();
+        startAutoDiscovery();
+      };
+    }
+
+    if (el.btnCloseSwitchPc) {
+      el.btnCloseSwitchPc.onclick = () => {
+        triggerFeedback(el.btnCloseSwitchPc, 'tap');
+        hideSwitchPcModal();
+      };
+    }
+
+    if (el.btnConnectManualIp) {
+      el.btnConnectManualIp.onclick = () => {
+        triggerFeedback(el.btnConnectManualIp, 'tap');
+        const val = el.manualIpInput.value.trim();
+        if (val) connectToManualHost(val);
+      };
+    }
+
+    function connectToManualHost(inputVal) {
+      let clean = inputVal.replace(/^https?:\/\//, '').split('/')[0].split('?')[0];
+      if (clean.includes(':')) clean = clean.split(':')[0];
+      if (!clean) return;
+      hostIp = clean;
+      localStorage.setItem('simple_streamer_last_ip', clean);
+      hideSwitchPcModal();
+      initConfig();
+    }
+
+    if (el.qrScanInput) {
+      el.qrScanInput.onchange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (window.BarcodeDetector) {
+          try {
+            const detector = new BarcodeDetector({ formats: ['qr_code'] });
+            const img = await createImageBitmap(file);
+            const codes = await detector.detect(img);
+            if (codes.length > 0 && codes[0].rawValue) {
+              handleScannedUrl(codes[0].rawValue);
+              return;
+            }
+          } catch (err) {
+            console.warn('BarcodeDetector error:', err);
+          }
+        }
+        alert('Could not auto-read QR code from photo. Please enter the IP address shown in OBS Studio.');
+      };
+    }
+
+    function handleScannedUrl(raw) {
+      try {
+        const u = new URL(raw);
+        const newHost = u.hostname;
+        const newPort = u.searchParams.get('port') || '4455';
+        const newPin = u.searchParams.get('pin') || '';
+        obsPort = parseInt(newPort, 10);
+        state.sessionPin = newPin;
+        hostIp = newHost;
+        localStorage.setItem('simple_streamer_last_ip', newHost);
+        hideSwitchPcModal();
+        initConfig();
+      } catch (_) {
+        if (raw && (raw.includes('.') || raw.includes(':'))) {
+          connectToManualHost(raw.trim());
+        }
+      }
+    }
+
+    // --- Boot Sequence ---
+    initSlider();
+    initConfig();
+  </script>
+</body>
+</html>

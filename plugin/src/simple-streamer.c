@@ -273,10 +273,36 @@ static void on_frontend_event(enum obs_frontend_event event, void *private_data)
 	}
 }
 
+static void open_mobile_remote_action(void *data)
+{
+	UNUSED_PARAMETER(data);
+#if defined(__APPLE__)
+	system("/usr/bin/open 'http://127.0.0.1:45455/remote' &");
+#elif defined(_WIN32)
+	system("start \"\" \"http://127.0.0.1:45455/remote\"");
+#else
+	system("xdg-open 'http://127.0.0.1:45455/remote' &");
+#endif
+}
+
+static void open_studio_dock_action(void *data)
+{
+	UNUSED_PARAMETER(data);
+#if defined(__APPLE__)
+	system("/usr/bin/open 'http://127.0.0.1:45455/dock' &");
+#elif defined(_WIN32)
+	system("start \"\" \"http://127.0.0.1:45455/dock\"");
+#else
+	system("xdg-open 'http://127.0.0.1:45455/dock' &");
+#endif
+}
+
 bool obs_module_load(void)
 {
 	blog(LOG_INFO, "[SimpleStreamer] Multi-Output Plugin loaded (version 2.2.0)");
 	obs_frontend_add_event_callback(on_frontend_event, NULL);
+	obs_frontend_add_tools_menu_item("Simple Streamer: Open Mobile Remote", open_mobile_remote_action, NULL);
+	obs_frontend_add_tools_menu_item("Simple Streamer: Open Studio Dock", open_studio_dock_action, NULL);
 	return true;
 }
 

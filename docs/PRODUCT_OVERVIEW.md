@@ -33,7 +33,9 @@ Community streamers and non-technical volunteers face significant friction when 
 | **Real-Time Stream Diagnostics** | In-dock telemetry polling upload bitrate, encoding FPS, dropped frame %, and per-destination health. | **Active** |
 | **Mid-Stream Platform Retry** | Inline `↻ Retry` button next to any failed destination to restart that specific output while live. | **Active** |
 | **Instant Clean Remote Teardown** | Sends `end_live_video=true` to Facebook and transitions YouTube broadcast to `complete` immediately on stream stop. | **Active** |
-| **1-Click Installers** | Native macOS DMG installer with automated launchd bridge and dock registration. | **Active** |
+| **Non-Destructive OBS Settings** | Automatically snapshots your personal OBS `Settings → Stream` configuration before broadcast kickoff and restores it upon stream termination. | **Active** |
+| **Mobile Remote Control & Confidence Preview** | Wireless scene switching, master audio VU metering, and stream kickoff over local mDNS (`simple-streamer.local:45455/remote`). | **Active** |
+| **1-Click Installers** | Native macOS DMG installer with automated launchd bridge and Windows PowerShell installer with automated firewall configuration. | **Active** |
 
 ---
 

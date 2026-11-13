@@ -207,12 +207,35 @@ body {
 
 /* Alert Box */
 .alert-box {
+  position: relative;
   background: #1c1917;
   border: 1px solid #78350f;
   border-radius: var(--radius-md);
   padding: 12px;
+  padding-right: 32px;
   margin-bottom: 14px;
   display: none;
+}
+
+.alert-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #a8a29e;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.alert-close-btn:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 .alert-title {

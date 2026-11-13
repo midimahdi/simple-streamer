@@ -180,6 +180,7 @@ sequenceDiagram
     Cloud-->>Dock: 200 OK { destinations: [ { serverUrl, streamKey, ... } ] }
     deactivate Cloud
 
+    Dock->>OBS: GetStreamServiceSettings() (Backup Original Settings)
     Dock->>OBS: SetStreamServiceSettings(Primary Target)
     Dock->>Bridge: POST /save-destinations (Secondary Targets)
     Bridge->>Plugin: Write config.json
@@ -189,9 +190,10 @@ sequenceDiagram
 
     Note over Volunteer,APIs: Stream Active — Real-time metrics polled every 1.5s
 
-    Volunteer->>Dock: Click "STOP STREAM"
+    Volunteer->>Dock: Click "STOP STREAM" (with Confirmation)
     Dock->>OBS: StopStream()
     Plugin->>Plugin: Stop Secondary Outputs
+    Dock->>OBS: SetStreamServiceSettings(Restore Original Settings)
     Dock->>Cloud: POST /end-live { destinations }
     Cloud->>APIs: end_live_video=true / complete broadcast
     APIs-->>Cloud: Broadcasts closed

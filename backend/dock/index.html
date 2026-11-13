@@ -18,12 +18,14 @@
         </div>
       </div>
       <div class="header-right">
+        <button id="toggleRemoteBtn" class="icon-btn" title="Mobile Remote Control" aria-label="Mobile Remote">📱</button>
         <button id="toggleDiagBtn" class="icon-btn" title="Platform Settings & Connections" aria-label="Toggle Settings">⚙</button>
       </div>
     </header>
 
     <!-- Error / Alert Banner -->
     <div id="alertBox" class="alert-box">
+      <button id="alertCloseBtn" class="alert-close-btn" type="button" title="Dismiss Alert" aria-label="Dismiss Alert">✕</button>
       <div id="alertTitle" class="alert-title">ALERT</div>
       <div id="alertMsg" class="alert-msg"></div>
       <div id="alertActions" class="alert-actions"></div>
@@ -142,6 +144,41 @@
         <div id="destinationsList" class="destinations-list"></div>
       </div>
     </div>
+
+    <!-- Mobile Remote Control Pairing Drawer -->
+    <div id="remotePanel" class="diagnostics-panel" style="display: none;">
+      <div class="diag-header-row">
+        <div>
+          <div class="diag-title">MOBILE REMOTE CONTROL</div>
+          <div class="diag-subtitle" style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+            Preview and kick off broadcasts from your smartphone on Wi-Fi
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px 10px; text-align: center;">
+        <div id="remoteQrContainer" style="background: #ffffff; padding: 12px; border-radius: 10px; display: inline-block; margin-bottom: 14px; min-width: 160px; min-height: 160px;"></div>
+        
+        <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 700; color: #10b981; margin-bottom: 4px; word-break: break-all;" id="remoteUrlDisplay">
+          Loading bridge...
+        </div>
+
+        <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #60a5fa; margin-bottom: 10px; word-break: break-all;" id="remoteMdnsDisplay">
+          or http://simple-streamer.local:45455/remote
+        </div>
+
+        <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px; max-width: 280px;">
+          Connect your phone to the same Wi-Fi. Scan the QR code or open the link above in Safari or Chrome.
+          <div style="margin-top: 6px;">
+            Pairing PIN: <strong id="remotePinDisplay" style="color: var(--text-primary); font-size: 14px; letter-spacing: 0.1em;">----</strong>
+          </div>
+        </div>
+
+        <button type="button" id="btnCopyRemoteUrl" class="btn-toggle-add" style="width: auto; padding: 6px 14px; font-size: 11px;">
+          📋 Copy Remote Link
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Bottom Action Button -->
@@ -151,6 +188,7 @@
     </button>
   </div>
 
+  <script src="./vendor/qrcode.min.js"></script>
   <script type="module" src="./app.js?v=20261103_15"></script>
 </body>
 </html>

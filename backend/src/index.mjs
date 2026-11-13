@@ -917,7 +917,8 @@ function renderAuthErrorHtml(title, message) {
     }
 
     // Resolve title and description (strictly user input with zero boilerplate)
-    const finalTitle = rawTitle;
+    const cleanTitle = rawTitle.replace(/[\r\n]+/g, ' ').trim();
+    const finalTitle = cleanTitle;
     const finalDescription = notes;
 
     console.log(`[Orchestrator] Starting broadcast: "${finalTitle}"`);
@@ -929,8 +930,9 @@ function renderAuthErrorHtml(title, message) {
         const d = { ...(rawD.credentials || {}), ...rawD };
         try {
           if (d.platform === 'facebook') {
+            const fbTitle = finalTitle.slice(0, 255);
             const fbRes = await createFacebookLiveVideo({
-              title: finalTitle,
+              title: fbTitle,
               description: finalDescription,
               pageId: d.pageId,
               accessToken: d.accessToken,
@@ -945,8 +947,9 @@ function renderAuthErrorHtml(title, message) {
               streamKey: fbRes.streamKey,
             };
           } else if (d.platform === 'youtube') {
+            const ytTitle = finalTitle.slice(0, 100);
             const ytRes = await createYouTubeBroadcast({
-              title: finalTitle,
+              title: ytTitle,
               description: finalDescription,
               refreshToken: d.refreshToken,
               streamId: d.streamId,
@@ -963,27 +966,51 @@ function renderAuthErrorHtml(title, message) {
               streamKey: d.streamName,
             };
           } else if (d.platform === 'twitch') {
+            let userToken = d.userToken;
+            let refreshToken = d.refreshToken;
+            const twTitle = finalTitle.slice(0, 140);
             if (d.userToken && d.broadcasterId) {
-              await updateTwitchChannelInfo({
+              const twRes = await updateTwitchChannelInfo({
                 broadcasterId: d.broadcasterId,
                 userToken: d.userToken,
-                title: finalTitle,
+                refreshToken: d.refreshToken,
+                title: twTitle,
               });
+              if (twRes && twRes.ok) {
+                if (twRes.userToken) userToken = twRes.userToken;
+                if (twRes.refreshToken) refreshToken = twRes.refreshToken;
+                console.log(`[Orchestrator] Updated Twitch channel title to: "${twTitle}"`);
+              } else {
+                console.warn(`[Orchestrator] Twitch title update warning: ${twRes?.error || 'failed'}`);
+              }
             }
             return {
               id: d.id,
               platform: 'twitch',
               name: d.name,
               ok: true,
+              userToken,
+              refreshToken,
               serverUrl: d.serverUrl || 'rtmp://live.twitch.tv/app/',
               streamKey: d.streamKey,
             };
           } else if (d.platform === 'kick') {
+            let userToken = d.userToken;
+            let refreshToken = d.refreshToken;
+            const kickTitle = finalTitle.slice(0, 100);
             if (d.userToken) {
-              await updateKickChannelInfo({
+              const kickRes = await updateKickChannelInfo({
                 userToken: d.userToken,
-                title: finalTitle,
+                refreshToken: d.refreshToken,
+                title: kickTitle,
               });
+              if (kickRes && kickRes.ok) {
+                if (kickRes.userToken) userToken = kickRes.userToken;
+                if (kickRes.refreshToken) refreshToken = kickRes.refreshToken;
+                console.log(`[Orchestrator] Updated Kick channel title to: "${kickTitle}"`);
+              } else {
+                console.warn(`[Orchestrator] Kick title update warning: ${kickRes?.error || 'failed'}`);
+              }
             }
             let kickServer = d.serverUrl || 'rtmps://fa723ac112e7.global-contribute.live-video.net:443/app/';
             if (kickServer && !kickServer.includes('/app')) {
@@ -994,6 +1021,8 @@ function renderAuthErrorHtml(title, message) {
               platform: 'kick',
               name: d.name,
               ok: true,
+              userToken,
+              refreshToken,
               serverUrl: kickServer,
               streamKey: d.streamKey,
             };
@@ -1026,7 +1055,7 @@ function renderAuthErrorHtml(title, message) {
     if (ytConfig?.refreshToken && ytConfig?.streamId) {
       executions.push(
         createYouTubeBroadcast({
-          title: finalTitle,
+          title: finalTitle.slice(0, 100),
           description: finalDescription,
           refreshToken: ytConfig.refreshToken,
           streamId: ytConfig.streamId,
@@ -1041,7 +1070,7 @@ function renderAuthErrorHtml(title, message) {
     if (fbConfig?.pageId && fbConfig?.accessToken) {
       executions.push(
         createFacebookLiveVideo({
-          title: finalTitle,
+          title: finalTitle.slice(0, 255),
           description: finalDescription,
           pageId: fbConfig.pageId,
           accessToken: fbConfig.accessToken,

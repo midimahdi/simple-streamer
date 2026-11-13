@@ -8,6 +8,21 @@ const PLATFORM_ICONS = {
   kick: `<svg class="platform-svg kick" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1.333 0h7.62v7.619h3.809V3.81h3.81V0h7.618v11.429h-3.81v3.809h3.81V24h-7.619v-3.81h-3.81v-3.809H8.952V24H1.333V0z"/></svg>`,
 };
 
+const DEFAULT_CLOUD_BACKEND = 'https://simple-streamer.bdjlmn.com';
+function resolveBackendUrl() {
+  const custom = localStorage.getItem('obs_orchestrator_backend_url');
+  if (custom && !custom.includes('45455') && !custom.includes('127.0.0.1') && !custom.includes('localhost') && !custom.includes('192.168.')) {
+    return custom;
+  }
+  if (custom) {
+    try { localStorage.removeItem('obs_orchestrator_backend_url'); } catch (_) {}
+  }
+  if (window.location.origin && window.location.origin.includes('simple-streamer.bdjlmn.com')) {
+    return window.location.origin;
+  }
+  return DEFAULT_CLOUD_BACKEND;
+}
+
 // Application State
 const state = {
   obs: new ObsWebSocketClient(),
@@ -29,20 +44,28 @@ const state = {
   config: {
     obsUrl: localStorage.getItem('obs_orchestrator_ws_url') || 'ws://127.0.0.1:4455',
     obsPass: localStorage.getItem('obs_orchestrator_ws_pass') || '',
-    backendUrl: localStorage.getItem('obs_orchestrator_backend_url') || (window.location.origin.startsWith('http') ? window.location.origin : 'https://simple-streamer.bdjlmn.com'),
+    backendUrl: resolveBackendUrl(),
     apiKey: localStorage.getItem('obs_orchestrator_api_key') || '',
   },
   discoveryCallback: null,
+  sessionPin: localStorage.getItem('simple_streamer_pin') || (() => {
+    const p = Math.floor(1000 + Math.random() * 9000).toString();
+    localStorage.setItem('simple_streamer_pin', p);
+    return p;
+  })(),
+  remoteQr: null,
 };
 
 // DOM References
 const el = {
   statusBadge: document.getElementById('statusBadge'),
   toggleDiagBtn: document.getElementById('toggleDiagBtn'),
+  toggleRemoteBtn: document.getElementById('toggleRemoteBtn'),
   brandTitle: document.getElementById('brandTitle'),
   brandSub: document.getElementById('brandSub'),
   actionContainer: document.querySelector('.action-container'),
   alertBox: document.getElementById('alertBox'),
+  alertCloseBtn: document.getElementById('alertCloseBtn'),
   alertTitle: document.getElementById('alertTitle'),
   alertMsg: document.getElementById('alertMsg'),
   alertActions: document.getElementById('alertActions'),
@@ -60,6 +83,14 @@ const el = {
   actionBtn: document.getElementById('actionBtn'),
   actionBtnText: document.getElementById('actionBtnText'),
   diagPanel: document.getElementById('diagPanel'),
+
+  // Remote Panel UI
+  remotePanel: document.getElementById('remotePanel'),
+  remoteQrContainer: document.getElementById('remoteQrContainer'),
+  remoteUrlDisplay: document.getElementById('remoteUrlDisplay'),
+  remoteMdnsDisplay: document.getElementById('remoteMdnsDisplay'),
+  remotePinDisplay: document.getElementById('remotePinDisplay'),
+  btnCopyRemoteUrl: document.getElementById('btnCopyRemoteUrl'),
 
   // Multi-destination UI
   destinationsPills: document.getElementById('destinationsPills'),
@@ -132,7 +163,7 @@ function updateActionBtnState() {
     return;
   }
 
-  const hasInvalid = enabledTargets.some((d) => d.status === 'invalid');
+  const hasInvalid = enabledTargets.some((d) => d.status === 'invalid' && !d.credentials?.streamKey && !d.streamKey);
   if (hasInvalid) {
     el.actionBtn.disabled = true;
     el.actionBtn.className = 'btn-primary';
@@ -166,11 +197,21 @@ function showAlert(title, message, actions = []) {
   el.alertMsg.textContent = message;
   el.alertActions.innerHTML = '';
 
-  actions.forEach((act) => {
+  const finalActions = Array.isArray(actions) ? [...actions] : [];
+  if (finalActions.length === 0) {
+    finalActions.push({ label: 'DISMISS', onClick: () => clearAlert() });
+  }
+
+  finalActions.forEach((act) => {
     const btn = document.createElement('button');
     btn.className = 'alert-btn';
     btn.textContent = act.label;
-    btn.onclick = act.onClick;
+    btn.onclick = () => {
+      clearAlert();
+      if (typeof act.onClick === 'function') {
+        act.onClick();
+      }
+    };
     el.alertActions.appendChild(btn);
   });
 
@@ -222,6 +263,14 @@ function toggleSettingsPanel(forceState) {
   const isCurrentlyOpen = el.diagPanel.style.display === 'block';
   const shouldOpen = forceState !== undefined ? forceState : !isCurrentlyOpen;
 
+  if (shouldOpen && el.remotePanel) {
+    el.remotePanel.style.display = 'none';
+    if (el.toggleRemoteBtn) {
+      el.toggleRemoteBtn.classList.remove('active');
+      el.toggleRemoteBtn.textContent = '📱';
+    }
+  }
+
   el.diagPanel.style.display = shouldOpen ? 'block' : 'none';
   if (el.inputGroup) {
     el.inputGroup.style.display = shouldOpen ? 'none' : 'block';
@@ -247,13 +296,202 @@ function toggleSettingsPanel(forceState) {
 }
 
 /**
+ * Toggle Mobile Remote Control View
+ */
+function toggleRemotePanel(forceState) {
+  const isCurrentlyOpen = el.remotePanel && el.remotePanel.style.display === 'block';
+  const shouldOpen = forceState !== undefined ? forceState : !isCurrentlyOpen;
+
+  if (shouldOpen && el.diagPanel) {
+    el.diagPanel.style.display = 'none';
+    if (el.toggleDiagBtn) {
+      el.toggleDiagBtn.classList.remove('active');
+      el.toggleDiagBtn.textContent = '⚙';
+    }
+  }
+
+  if (el.remotePanel) {
+    el.remotePanel.style.display = shouldOpen ? 'block' : 'none';
+  }
+  if (el.inputGroup) {
+    el.inputGroup.style.display = shouldOpen ? 'none' : 'block';
+  }
+  if (el.liveContainer && state.isStreaming) {
+    el.liveContainer.style.display = shouldOpen ? 'none' : 'block';
+  }
+  if (el.actionContainer) {
+    el.actionContainer.style.display = shouldOpen ? 'none' : 'block';
+  }
+  if (el.toggleRemoteBtn) {
+    el.toggleRemoteBtn.classList.toggle('active', shouldOpen);
+    el.toggleRemoteBtn.textContent = shouldOpen ? '✕' : '📱';
+    el.toggleRemoteBtn.title = shouldOpen ? 'Back to Simple Streamer' : 'Mobile Remote Control';
+  }
+  if (el.brandTitle) {
+    el.brandTitle.textContent = shouldOpen ? 'MOBILE REMOTE' : 'SIMPLE STREAMER';
+  }
+  if (el.brandSub) {
+    el.brandSub.textContent = '';
+  }
+
+  if (shouldOpen) {
+    updateRemotePanelInfo();
+  }
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+/**
+ * Update Remote Panel Information & QR Code
+ */
+async function updateRemotePanelInfo() {
+  if (el.remotePinDisplay) {
+    el.remotePinDisplay.textContent = state.sessionPin;
+  }
+
+  let hostIp = '127.0.0.1';
+  let bridgePort = 45455;
+  let obsPort = 4455;
+
+  try {
+    const res = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.hostIp) hostIp = data.hostIp;
+      if (data.bridgePort) bridgePort = data.bridgePort;
+      if (data.obsPort) obsPort = data.obsPort;
+    }
+  } catch (_) {}
+
+  if (hostIp === '127.0.0.1' && window.location.hostname && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
+    hostIp = window.location.hostname;
+  }
+
+  const mdnsUrl = `http://simple-streamer.local:${bridgePort}/remote?pin=${state.sessionPin}&fallback=${hostIp}&port=${obsPort}`;
+  const ipUrl = `http://${hostIp}:${bridgePort}/remote?pin=${state.sessionPin}&port=${obsPort}`;
+
+  if (el.remoteUrlDisplay) {
+    el.remoteUrlDisplay.textContent = `http://simple-streamer.local:${bridgePort}/remote`;
+  }
+  if (el.remoteMdnsDisplay) {
+    el.remoteMdnsDisplay.textContent = `or direct IP: ${ipUrl}`;
+  }
+
+  if (el.remoteQrContainer && typeof QRCode !== 'undefined') {
+    el.remoteQrContainer.innerHTML = '';
+    try {
+      state.remoteQr = new QRCode(el.remoteQrContainer, {
+        text: mdnsUrl,
+        width: 160,
+        height: 160,
+        colorDark: '#0d0f12',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    } catch (e) {
+      console.warn('QR Code generation error:', e);
+    }
+  }
+
+  if (el.btnCopyRemoteUrl) {
+    el.btnCopyRemoteUrl.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(mdnsUrl);
+        el.btnCopyRemoteUrl.textContent = '✓ Copied to Clipboard!';
+        setTimeout(() => {
+          if (el.btnCopyRemoteUrl) el.btnCopyRemoteUrl.textContent = '📋 Copy Remote Link';
+        }, 2000);
+      } catch (_) {
+        prompt('Copy this link:', mdnsUrl);
+      }
+    };
+  }
+}
+
+function extractAccountIdentifier(d) {
+  if (!d) return '';
+  if (d.credentials?.broadcasterId) return String(d.credentials.broadcasterId).toLowerCase();
+  if (d.credentials?.channelSlug) return String(d.credentials.channelSlug).toLowerCase();
+  if (d.credentials?.pageId) return String(d.credentials.pageId).toLowerCase();
+  if (d.credentials?.streamId) return String(d.credentials.streamId).toLowerCase();
+  if (d.accountName) return String(d.accountName).toLowerCase().trim();
+  if (d.credentials?.channelName) return String(d.credentials.channelName).toLowerCase().trim();
+  const m = (d.name || '').match(/\((.+)\)/);
+  if (m) return m[1].toLowerCase().trim();
+  return (d.name || d.id || '').toLowerCase().trim();
+}
+
+/**
+ * Deduplicate and merge destinations by platform and account identifier
+ */
+function deduplicateDestinations(dests) {
+  if (!Array.isArray(dests)) return [];
+  const result = [];
+  const seen = new Map();
+
+  for (const d of dests) {
+    if (!d || !d.platform) continue;
+    const platform = d.platform.toLowerCase().trim();
+    const ident = extractAccountIdentifier(d);
+    const key = `${platform}:${ident}`;
+
+    if (!seen.has(key)) {
+      const copy = { ...d, credentials: { ...(d.credentials || {}) } };
+      seen.set(key, copy);
+      result.push(copy);
+    } else {
+      const existing = seen.get(key);
+      existing.credentials = {
+        ...(existing.credentials || {}),
+        ...(d.credentials || {}),
+      };
+      if (d.status === 'valid' || existing.status === 'valid') {
+        existing.status = 'valid';
+      }
+      if (d.enabled) existing.enabled = true;
+      if (d.name && !existing.name) existing.name = d.name;
+      if (d.accountName && !existing.accountName) existing.accountName = d.accountName;
+    }
+  }
+
+  // Fallback consolidation per platform
+  const byPlatform = new Map();
+  for (const d of result) {
+    const p = d.platform.toLowerCase().trim();
+    if (!byPlatform.has(p)) {
+      byPlatform.set(p, [d]);
+    } else {
+      byPlatform.get(p).push(d);
+    }
+  }
+
+  const finalDests = [];
+  for (const [p, list] of byPlatform.entries()) {
+    if (list.length > 1) {
+      const primary = list.find((x) => x.credentials?.streamKey || x.credentials?.refreshToken || x.credentials?.userToken) || list[0];
+      for (const other of list) {
+        if (other !== primary) {
+          primary.credentials = { ...(other.credentials || {}), ...(primary.credentials || {}) };
+          if (other.enabled) primary.enabled = true;
+          if (other.status === 'valid') primary.status = 'valid';
+        }
+      }
+      finalDests.push(primary);
+    } else {
+      finalDests.push(list[0]);
+    }
+  }
+
+  return finalDests;
+}
+
+/**
  * Load Destinations from LocalStorage with Seamless Legacy Migration
  */
 function loadDestinations() {
   const raw = localStorage.getItem('simple_streamer_destinations');
   if (raw) {
     try {
-      state.destinations = JSON.parse(raw);
+      state.destinations = deduplicateDestinations(JSON.parse(raw));
     } catch (_) {
       state.destinations = [];
     }
@@ -272,6 +510,8 @@ function loadDestinations() {
         accountName: ytChannel,
         enabled: true,
         status: 'valid',
+      statusWarning: null,
+      statusError: null,
         credentials: {
           refreshToken: ytToken,
           streamId: ytStreamId,
@@ -291,6 +531,8 @@ function loadDestinations() {
         accountName: fbName,
         enabled: true,
         status: 'valid',
+      statusWarning: null,
+      statusError: null,
         credentials: {
           pageId: fbPageId,
           accessToken: fbToken,
@@ -303,6 +545,37 @@ function loadDestinations() {
     }
   }
 
+  state.destinations = deduplicateDestinations(state.destinations);
+
+  // Always query bridge remote-config to sync and merge server destinations
+  fetch('http://127.0.0.1:45455/remote-config')
+    .then((r) => r.json())
+    .then((cfg) => {
+      if (cfg && cfg.destinations && Array.isArray(cfg.destinations) && cfg.destinations.length > 0) {
+        if (!state.destinations || state.destinations.length === 0) {
+          state.destinations = deduplicateDestinations(cfg.destinations);
+          saveDestinations();
+        } else {
+          let merged = false;
+          cfg.destinations.forEach((sd) => {
+            const loc = state.destinations.find((d) => d.id === sd.id || d.platform === sd.platform);
+            if (!loc) {
+              state.destinations.push(sd);
+              merged = true;
+            } else if (!loc.credentials && sd.credentials) {
+              loc.credentials = sd.credentials;
+              merged = true;
+            }
+          });
+          if (merged) {
+            state.destinations = deduplicateDestinations(state.destinations);
+            saveDestinations();
+          }
+        }
+      }
+    })
+    .catch(() => {});
+
   renderDestinationsPills();
   renderDestinationsList();
   syncNativePluginConfig();
@@ -312,11 +585,47 @@ function loadDestinations() {
  * Save Destinations to LocalStorage and update UI
  */
 function saveDestinations() {
+  state.destinations = deduplicateDestinations(state.destinations);
   localStorage.setItem('simple_streamer_destinations', JSON.stringify(state.destinations));
   renderDestinationsPills();
   renderDestinationsList();
   syncNativePluginConfig();
   updateActionBtnState();
+
+  // Save full state to bridge so broadcast_state.json stays in sync
+  fetch('http://127.0.0.1:45455/save-state-destinations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ destinations: state.destinations }),
+  }).catch(() => {});
+
+  // Real-time sync to Mobile Remotes
+  if (state.obs && state.obs.isConnected) {
+    state.obs.call('BroadcastCustomEvent', {
+      eventData: {
+        action: 'METADATA_CHANGED',
+        destinations: (state.destinations || []).map((d) => ({
+          id: d.id,
+          name: d.name || d.platform,
+          platform: d.platform,
+          enabled: d.enabled,
+        })),
+      },
+    }).catch(() => {});
+  }
+
+  // Atomically persist all destination enabled states to local bridge in one shot
+  const bridgeUrl = (window.location.port === '45455' ? window.location.origin : 'http://127.0.0.1:45455');
+  fetch(`${bridgeUrl}/sync-destinations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      destinations: (state.destinations || []).map((d) => ({
+        id: d.id,
+        enabled: d.enabled !== false,
+      })),
+    }),
+  }).catch(() => {});
 }
 
 /**
@@ -376,16 +685,31 @@ function renderDestinationsList() {
     card.className = 'destination-card';
 
     const icon = PLATFORM_ICONS[dest.platform] || '';
+    const needsAuthSync = (dest.platform === 'twitch' || dest.platform === 'kick') && (!dest.credentials?.refreshToken || dest.statusWarning);
+    const authSyncHtml = needsAuthSync
+      ? `<button type="button" class="btn-sync-token" id="sync_${dest.id}" style="font-size: 10px; padding: 2px 8px; background: #38bdf8; color: #0f172a; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; margin-right: 6px;">Sync Title Token</button>`
+      : '';
 
     card.innerHTML = `
       <div class="destination-card-left">
         ${icon}
         <span class="destination-name">${dest.name}</span>
+        ${needsAuthSync ? '<span style="font-size: 9px; color: #f59e0b; margin-left: 6px;">(Title sync needs auth)</span>' : ''}
       </div>
       <div class="destination-card-right">
+        ${authSyncHtml}
         <button type="button" class="btn-icon-del" id="del_${dest.id}" title="Remove destination">✕</button>
       </div>
     `;
+
+    // Re-sync auth token
+    const syncBtn = card.querySelector(`#sync_${dest.id}`);
+    if (syncBtn) {
+      syncBtn.onclick = () => {
+        if (dest.platform === 'twitch' && el.btnAddTwitch) el.btnAddTwitch.click();
+        if (dest.platform === 'kick' && el.btnAddKick) el.btnAddKick.click();
+      };
+    }
 
     // Delete destination
     const delBtn = card.querySelector(`#del_${dest.id}`);
@@ -418,15 +742,29 @@ async function validateSingleDestination(destId) {
     });
 
     const data = await res.json();
-    dest.status = data.valid ? 'valid' : 'invalid';
-    dest.statusError = data.error || null;
+    const hasDirectKey = !!(dest.credentials?.streamKey || dest.streamKey);
+    if (data.valid || hasDirectKey) {
+      dest.status = 'valid';
+      dest.statusError = null;
+      dest.statusWarning = data.valid ? null : data.error;
+    } else {
+      dest.status = 'invalid';
+      dest.statusError = data.error || null;
+    }
     if (data.channelName && !dest.name) dest.name = data.channelName;
     if (data.streamKey && !dest.credentials.streamKey) dest.credentials.streamKey = data.streamKey;
     if (data.streamName && !dest.credentials.streamName) dest.credentials.streamName = data.streamName;
     if (data.ingestionAddress && !dest.credentials.ingestionAddress) dest.credentials.ingestionAddress = data.ingestionAddress;
   } catch (err) {
-    dest.status = 'invalid';
-    dest.statusError = err.message;
+    const hasDirectKey = !!(dest.credentials?.streamKey || dest.streamKey);
+    if (hasDirectKey) {
+      dest.status = 'valid';
+      dest.statusError = null;
+      dest.statusWarning = err.message;
+    } else {
+      dest.status = 'invalid';
+      dest.statusError = err.message;
+    }
   }
 
   saveDestinations();
@@ -466,8 +804,21 @@ async function validateAllDestinations() {
       data.results.forEach((r) => {
         const found = state.destinations.find((d) => d.id === r.id);
         if (found) {
-          found.status = r.valid ? 'valid' : 'invalid';
-          found.statusError = r.error || null;
+          const hasDirectKey = !!(found.credentials?.streamKey || found.streamKey);
+          if (r.valid) {
+            found.status = 'valid';
+            found.statusError = null;
+            found.statusWarning = null;
+          } else if (hasDirectKey) {
+            // Direct stream key is present; video broadcast works directly even if OAuth title update token expired
+            found.status = 'valid';
+            found.statusError = null;
+            found.statusWarning = r.error || 'Token expired; streaming with direct RTMP.';
+            logDiag(`ℹ️ Destination "${found.name}": ${found.statusWarning}`);
+          } else {
+            found.status = 'invalid';
+            found.statusError = r.error || null;
+          }
           if (r.channelName && !found.name) found.name = r.channelName;
           if (r.streamKey && !found.credentials.streamKey) found.credentials.streamKey = r.streamKey;
           if (r.streamName && !found.credentials.streamName) found.credentials.streamName = r.streamName;
@@ -588,6 +939,8 @@ function promptConfirmYouTube(data) {
       accountName: channelTitle,
       enabled: true,
       status: 'valid',
+      statusWarning: null,
+      statusError: null,
       credentials: {
         refreshToken,
         streamId: selectedStreamId,
@@ -596,10 +949,35 @@ function promptConfirmYouTube(data) {
       },
     };
 
-    // Replace if existing channel id exists, otherwise add
-    const existingIdx = state.destinations.findIndex((d) => d.platform === 'youtube' && d.name === channelTitle);
+    // Replace if existing channel exists, otherwise add
+    const existingIdx = state.destinations.findIndex(
+      (d) => d.platform === 'youtube' && (
+        d.id === dest.id ||
+        d.accountName === channelTitle ||
+        d.name === channelTitle ||
+        d.name === `YouTube (${channelTitle})` ||
+        (d.credentials && selectedStreamId && d.credentials.streamId === selectedStreamId) ||
+        state.destinations.filter((x) => x.platform === 'youtube').length === 1
+      )
+    );
     if (existingIdx >= 0) {
-      state.destinations[existingIdx] = dest;
+      const existing = state.destinations[existingIdx];
+      state.destinations[existingIdx] = {
+        ...existing,
+        ...dest,
+        id: existing.id,
+        name: existing.name || dest.name,
+        enabled: existing.enabled !== undefined ? existing.enabled : true,
+        status: 'valid',
+      statusWarning: null,
+      statusError: null,
+        statusWarning: null,
+        statusError: null,
+        credentials: {
+          ...existing.credentials,
+          ...dest.credentials,
+        },
+      };
     } else {
       state.destinations.push(dest);
     }
@@ -688,15 +1066,37 @@ function promptConfirmFacebook(data) {
         accountName: pageName,
         enabled: true,
         status: 'valid',
+      statusWarning: null,
+      statusError: null,
         credentials: {
           pageId,
           accessToken,
         },
       };
 
-      const existingIdx = state.destinations.findIndex((d) => d.id === dest.id);
+      const existingIdx = state.destinations.findIndex(
+        (d) => d.platform === 'facebook' && (
+          d.id === dest.id ||
+          d.credentials?.pageId === pageId ||
+          d.name === pageName ||
+          d.name === `Facebook (${pageName})` ||
+          d.accountName === pageName ||
+          state.destinations.filter((x) => x.platform === 'facebook').length === 1
+        )
+      );
       if (existingIdx >= 0) {
-        state.destinations[existingIdx] = dest;
+        const existing = state.destinations[existingIdx];
+        state.destinations[existingIdx] = {
+          ...existing,
+          ...dest,
+          id: existing.id,
+          name: existing.name || dest.name,
+          enabled: existing.enabled !== undefined ? existing.enabled : true,
+          credentials: {
+            ...existing.credentials,
+            ...dest.credentials,
+          },
+        };
       } else {
         state.destinations.push(dest);
       }
@@ -741,7 +1141,7 @@ function startTwitchPoll(sessionId) {
 }
 
 function promptConfirmTwitch(data) {
-  const { channelName, broadcasterId, streamKey, userToken, serverUrl } = data;
+  const { channelName, broadcasterId, streamKey, userToken, serverUrl, refreshToken } = data;
   const html = `
     <div style="margin-bottom: 10px;">
       <div style="font-weight: 700; color: #fff; margin-bottom: 4px;">Twitch Channel Authorized:</div>
@@ -750,7 +1150,7 @@ function promptConfirmTwitch(data) {
       </div>
       <p style="font-size: 10px; color: #94a3b8; margin: 8px 0 0 0;">
         ✓ Stream key linked automatically.<br>
-        ✓ Automatic title updates enabled.
+        ✓ Automatic title updates enabled (auto-refreshing token).
       </p>
     </div>
   `;
@@ -759,22 +1159,52 @@ function promptConfirmTwitch(data) {
     const dest = {
       id: 'twitch_' + (broadcasterId || Date.now()),
       platform: 'twitch',
-      name: channelName,
+      name: `Twitch (${channelName})`,
       accountName: channelName,
       enabled: true,
       status: 'valid',
+      statusWarning: null,
+      statusError: null,
       credentials: {
         broadcasterId,
         channelName,
         streamKey,
         userToken,
+        refreshToken: refreshToken || null,
         serverUrl: serverUrl || 'rtmp://live.twitch.tv/app/',
       },
     };
 
-    const existingIdx = state.destinations.findIndex((d) => d.platform === 'twitch' && d.name === channelName);
+    const existingIdx = state.destinations.findIndex(
+      (d) => d.platform === 'twitch' && (
+        d.credentials?.broadcasterId === broadcasterId ||
+        d.id === 'twitch_' + broadcasterId ||
+        d.accountName === channelName ||
+        d.credentials?.channelName === channelName ||
+        d.name === channelName ||
+        d.name === `Twitch (${channelName})` ||
+        state.destinations.filter((x) => x.platform === 'twitch').length === 1
+      )
+    );
+
     if (existingIdx >= 0) {
-      state.destinations[existingIdx] = dest;
+      const existing = state.destinations[existingIdx];
+      state.destinations[existingIdx] = {
+        ...existing,
+        ...dest,
+        id: existing.id,
+        name: existing.name || dest.name,
+        enabled: existing.enabled !== undefined ? existing.enabled : true,
+        status: 'valid',
+      statusWarning: null,
+      statusError: null,
+        statusWarning: null,
+        statusError: null,
+        credentials: {
+          ...existing.credentials,
+          ...dest.credentials,
+        },
+      };
     } else {
       state.destinations.push(dest);
     }
@@ -816,7 +1246,7 @@ function startKickPoll(sessionId) {
 }
 
 function promptConfirmKick(data) {
-  const { channelName, userToken, serverUrl, streamKey: fetchedStreamKey } = data;
+  const { channelName, userToken, serverUrl, streamKey: fetchedStreamKey, refreshToken } = data;
   const hasAutoKey = Boolean(fetchedStreamKey);
 
   const html = `
@@ -828,7 +1258,7 @@ function promptConfirmKick(data) {
       ${hasAutoKey ? `
         <p style="font-size: 10px; color: #94a3b8; margin: 8px 0 0 0;">
           ✓ Stream key linked automatically via streamkey:read.<br>
-          ✓ Automatic title updates enabled.
+          ✓ Automatic title updates enabled (auto-refreshing token).
         </p>
       ` : `
         <div style="margin-top: 10px;">
@@ -852,23 +1282,51 @@ function promptConfirmKick(data) {
     }
 
     const dest = {
-      id: 'kick_' + Date.now(),
+      id: 'kick_' + channelName.replace(/[^a-zA-Z0-9_-]/g, ''),
       platform: 'kick',
-      name: channelName,
+      name: `Kick (${channelName})`,
       accountName: channelName,
       enabled: true,
       status: 'valid',
+      statusWarning: null,
+      statusError: null,
       credentials: {
         channelSlug: channelName,
         streamKey: finalStreamKey,
         userToken,
+        refreshToken: refreshToken || null,
         serverUrl: serverUrl || 'rtmps://fa723ac112e7.global-contribute.live-video.net:443/app/',
       },
     };
 
-    const existingIdx = state.destinations.findIndex((d) => d.platform === 'kick' && d.name === channelName);
+    const existingIdx = state.destinations.findIndex(
+      (d) => d.platform === 'kick' && (
+        d.credentials?.channelSlug === channelName ||
+        d.accountName === channelName ||
+        d.name === channelName ||
+        d.name === `Kick (${channelName})` ||
+        state.destinations.filter((x) => x.platform === 'kick').length === 1
+      )
+    );
+
     if (existingIdx >= 0) {
-      state.destinations[existingIdx] = dest;
+      const existing = state.destinations[existingIdx];
+      state.destinations[existingIdx] = {
+        ...existing,
+        ...dest,
+        id: existing.id,
+        name: existing.name || dest.name,
+        enabled: existing.enabled !== undefined ? existing.enabled : true,
+        status: 'valid',
+      statusWarning: null,
+      statusError: null,
+        statusWarning: null,
+        statusError: null,
+        credentials: {
+          ...existing.credentials,
+          ...dest.credentials,
+        },
+      };
     } else {
       state.destinations.push(dest);
     }
@@ -923,6 +1381,53 @@ async function syncNativePluginConfig() {
     }
   } catch (err) {
     logDiag(`Plugin sync notice: ${err.message}`);
+  }
+}
+
+/**
+ * Backup user's native OBS stream service settings before Simple Streamer overrides them.
+ */
+async function backupOriginalStreamServiceSettings() {
+  if (!state.obs || !state.obs.isConnected) return;
+  try {
+    const existing = localStorage.getItem('simple_streamer_backup_stream_settings');
+    if (existing) return; // Keep the original non-SimpleStreamer settings
+
+    const current = await state.obs.call('GetStreamServiceSettings');
+    if (current && current.streamServiceType && current.streamServiceSettings) {
+      localStorage.setItem(
+        'simple_streamer_backup_stream_settings',
+        JSON.stringify({
+          streamServiceType: current.streamServiceType,
+          streamServiceSettings: current.streamServiceSettings,
+        })
+      );
+      logDiag(`✓ Backed up user's original OBS stream settings (${current.streamServiceType}).`);
+    }
+  } catch (err) {
+    logDiag(`Notice backing up original stream settings: ${err.message}`);
+  }
+}
+
+/**
+ * Restore user's native OBS stream service settings after Simple Streamer broadcast ends.
+ */
+async function restoreOriginalStreamServiceSettings() {
+  const backupRaw = localStorage.getItem('simple_streamer_backup_stream_settings');
+  if (!backupRaw || !state.obs || !state.obs.isConnected) return;
+  try {
+    const backup = JSON.parse(backupRaw);
+    if (backup && backup.streamServiceType && backup.streamServiceSettings) {
+      logDiag(`Restoring user's original OBS stream settings (${backup.streamServiceType})...`);
+      await state.obs.call('SetStreamServiceSettings', {
+        streamServiceType: backup.streamServiceType,
+        streamServiceSettings: backup.streamServiceSettings,
+      });
+      localStorage.removeItem('simple_streamer_backup_stream_settings');
+      logDiag("✓ User's original OBS stream settings restored successfully.");
+    }
+  } catch (err) {
+    logDiag(`Notice restoring original stream settings: ${err.message}`);
   }
 }
 
@@ -991,22 +1496,110 @@ async function handleGoLive() {
 
     gcpResponse = await res.json().catch(() => ({}));
     if (!res.ok && gcpResponse.status !== 'PARTIAL_SUCCESS') {
-      throw new Error(gcpResponse.error || `HTTP ${res.status}`);
+      const hasDirectDests = enabledTargets.some((d) => d.credentials?.streamKey);
+      if (!hasDirectDests) {
+        throw new Error(gcpResponse.error || `HTTP ${res.status}`);
+      }
     }
   } catch (err) {
-    state.isPreparing = false;
-    setStatus('ERROR', 'error');
-    el.actionBtn.disabled = false;
-    el.actionBtnText.textContent = 'GO LIVE';
-    showAlert('ORCHESTRATION FAILED', `${err.message}. Check your internet connection.`, [
-      { label: 'RETRY', onClick: () => handleGoLive() },
-    ]);
-    return;
+    logDiag(`Cloud orchestrator notice: ${err.message}`);
+    const directTargets = enabledTargets.filter((d) => d.credentials?.streamKey);
+    if (directTargets.length > 0) {
+      logDiag(`Recovering with direct RTMP streaming for ${directTargets.length} target(s)...`);
+      gcpResponse = {
+        status: 'PARTIAL_SUCCESS',
+        destinations: enabledTargets.map((d) => {
+          if (d.credentials?.streamKey) {
+            let serverUrl = d.credentials.serverUrl;
+            if (d.platform === 'twitch') serverUrl = serverUrl || 'rtmp://live.twitch.tv/app/';
+            if (d.platform === 'kick') {
+              serverUrl = serverUrl || 'rtmps://fa723fc1b171.global-contribute.live-video.net:443/app';
+              if (serverUrl && !serverUrl.includes('/app')) serverUrl = serverUrl.replace(/\/+$/, '') + ':443/app';
+            }
+            return {
+              id: d.id,
+              platform: d.platform,
+              name: d.name,
+              ok: true,
+              serverUrl,
+              streamKey: d.credentials.streamKey,
+            };
+          }
+          return {
+            id: d.id,
+            platform: d.platform,
+            name: d.name,
+            ok: false,
+            error: `${d.platform.toUpperCase()} requires active cloud connection (${err.message})`,
+          };
+        }),
+      };
+    } else {
+      state.isPreparing = false;
+      setStatus('ERROR', 'error');
+      el.actionBtn.disabled = false;
+      el.actionBtnText.textContent = 'GO LIVE';
+      if (state.obs && state.obs.isConnected) {
+        state.obs.call('BroadcastCustomEvent', {
+          eventData: { action: 'LIVE_START_FAILED', error: err.message },
+        }).catch(() => {});
+      }
+      showAlert('ORCHESTRATION FAILED', `${err.message}. Check your internet connection.`, [
+        { label: 'RETRY', onClick: () => handleGoLive() },
+      ]);
+      return;
+    }
   }
 
   const returnedDests = gcpResponse.destinations || [];
+
+  // Resilient fallback: For any platform with stored direct RTMP credentials (Twitch, Kick, Custom RTMP),
+  // ensure they can stream even if cloud metadata update had an issue.
+  for (const t of enabledTargets) {
+    if (t.credentials?.streamKey) {
+      let d = returnedDests.find((item) => item.id === t.id);
+      if (!d) {
+        d = { id: t.id, platform: t.platform, name: t.name, ok: true };
+        returnedDests.push(d);
+      }
+      if (!d.ok && (t.platform === 'twitch' || t.platform === 'kick')) {
+        logDiag(`Direct RTMP fallback: Enabling ${t.name || t.platform} via stored stream key (Cloud notice: ${d.error || 'metadata update failed'})`);
+        d.ok = true;
+      }
+      if (!d.serverUrl) {
+        let srv = t.credentials.serverUrl;
+        if (t.platform === 'twitch') srv = srv || 'rtmp://live.twitch.tv/app/';
+        if (t.platform === 'kick') srv = srv || 'rtmps://fa723fc1b171.global-contribute.live-video.net:443/app';
+        d.serverUrl = srv;
+      }
+      if (t.platform === 'kick' && d.serverUrl && !d.serverUrl.includes('/app')) {
+        d.serverUrl = d.serverUrl.replace(/\/+$/, '') + ':443/app';
+      }
+      if (!d.streamKey) {
+        d.streamKey = t.credentials.streamKey;
+      }
+      if (d.userToken && t.credentials) t.credentials.userToken = d.userToken;
+      if (d.refreshToken && t.credentials) t.credentials.refreshToken = d.refreshToken;
+    }
+  }
+
   const successfulDests = returnedDests.filter((d) => d.ok);
   const failedDests = returnedDests.filter((d) => !d.ok);
+
+  // Automatically clear any stale error status for destinations that succeeded
+  let stateModified = false;
+  successfulDests.forEach((sd) => {
+    const orig = state.destinations.find((t) => t.id === sd.id);
+    if (orig && orig.status !== 'valid') {
+      orig.status = 'valid';
+      orig.statusError = null;
+      orig.statusWarning = null;
+      stateModified = true;
+    }
+  });
+  if (stateModified) {
+    saveDestinations();
+  }
 
   if (successfulDests.length === 0) {
     state.isPreparing = false;
@@ -1014,6 +1607,11 @@ async function handleGoLive() {
     el.actionBtn.disabled = false;
     el.actionBtnText.textContent = 'GO LIVE';
     const firstErr = returnedDests.find((d) => !d.ok)?.error || 'Unknown error';
+    if (state.obs && state.obs.isConnected) {
+      state.obs.call('BroadcastCustomEvent', {
+        eventData: { action: 'LIVE_START_FAILED', error: firstErr },
+      }).catch(() => {});
+    }
     showAlert('ALL DESTINATIONS FAILED', `Could not create broadcasts: ${firstErr}`);
     return;
   }
@@ -1024,6 +1622,7 @@ async function handleGoLive() {
   }
 
   // 1. Primary Output configured directly in OBS
+  await backupOriginalStreamServiceSettings();
   const primary = successfulDests[0];
   logDiag(`Configuring OBS Primary Stream: ${primary.name || primary.platform} (${primary.serverUrl})`);
   try {
@@ -1102,6 +1701,11 @@ async function handleGoLive() {
   } catch (err) {
     state.isPreparing = false;
     logDiag(`OBS Start failed: ${err.message}`);
+    if (state.obs && state.obs.isConnected) {
+      state.obs.call('BroadcastCustomEvent', {
+        eventData: { action: 'LIVE_START_FAILED', error: `OBS encoder error: ${err.message}` },
+      }).catch(() => {});
+    }
     showAlert('OBS START FAILED', `OBS encoder error: ${err.message}`);
   }
 }
@@ -1601,6 +2205,9 @@ async function handleEndStream() {
   setLiveUI(false);
   clearAlert();
   logDiag('Stream terminated cleanly.');
+
+  // Restore user's native OBS stream settings after stopping encoders
+  setTimeout(restoreOriginalStreamServiceSettings, 1000);
 }
 
 /**
@@ -1642,6 +2249,9 @@ async function connectObs(isRetry = false) {
     if (streamStatus.outputActive) {
       logDiag('OBS is currently streaming.');
       setLiveUI(true);
+    } else {
+      // If OBS was closed mid-stream or previous session had pending backup, restore native settings
+      restoreOriginalStreamServiceSettings();
     }
   } catch (err) {
     if (err.message && err.message.toLowerCase().includes('auth')) {
@@ -1752,10 +2362,17 @@ function prepareAuthSessions() {
  * Initialize Event Handlers
  */
 function initEvents() {
+  // Close / Dismiss Alert Banner
+  if (el.alertCloseBtn) {
+    el.alertCloseBtn.onclick = () => clearAlert();
+  }
+
   // Main Broadcast Action Button
   el.actionBtn.onclick = () => {
     if (state.isStreaming) {
-      handleEndStream();
+      if (confirm('Are you sure you want to END the live broadcast on all platforms?')) {
+        handleEndStream();
+      }
     } else {
       handleGoLive();
     }
@@ -1763,6 +2380,11 @@ function initEvents() {
 
   // Toggle Settings
   el.toggleDiagBtn.onclick = () => toggleSettingsPanel();
+
+  // Toggle Mobile Remote
+  if (el.toggleRemoteBtn) {
+    el.toggleRemoteBtn.onclick = () => toggleRemotePanel();
+  }
 
   // Toggle Add Platform Options Grid
   const collapseAddPlatforms = () => {
@@ -1843,6 +2465,7 @@ function initEvents() {
       setLiveUI(true);
     } else if (!data.outputActive && state.isStreaming) {
       setLiveUI(false);
+      setTimeout(restoreOriginalStreamServiceSettings, 1000);
     }
   });
 
@@ -1858,7 +2481,117 @@ function initEvents() {
     scheduleObsReconnect();
   });
 
-  // Auto-save form inputs
+  // Metadata Real-Time Two-Way Sync
+  function syncMetadataToBridgeAndRemote() {
+    const titleEl = document.getElementById('lessonTitle');
+    const descEl = document.getElementById('lessonDescription');
+    const title = titleEl ? titleEl.value.trim() : '';
+    const description = descEl ? descEl.value.trim() : '';
+
+    // Persist to local bridge
+    fetch(`http://127.0.0.1:45455/save-title?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`).catch(() => {});
+
+    // Broadcast to mobile remotes via OBS WebSocket CustomEvent
+    if (state.obs && state.obs.isConnected) {
+      state.obs.call('BroadcastCustomEvent', {
+        eventData: {
+          action: 'METADATA_CHANGED',
+          title,
+          description,
+          destinations: (state.destinations || []).map((d) => ({
+            id: d.id,
+            name: d.name || d.platform,
+            platform: d.platform,
+            enabled: d.enabled !== false,
+          })),
+        }
+      }).catch(() => {});
+    }
+  }
+
+  // Mobile Remote Custom Events Handshake
+  state.obs.on('CustomEvent', async (eventData) => {
+    if (!eventData || !eventData.action) return;
+
+    if (eventData.action === 'SYNC_REQUEST') {
+      const titleEl = document.getElementById('lessonTitle');
+      const descEl = document.getElementById('lessonDescription');
+      const curTitle = titleEl ? titleEl.value.trim() : '';
+      const curDesc = descEl ? descEl.value.trim() : '';
+
+      await state.obs.call('BroadcastCustomEvent', {
+        eventData: {
+          action: 'SYNC_RESPONSE',
+          title: curTitle,
+          description: curDesc,
+          destinations: (state.destinations || []).map((d) => ({
+            id: d.id,
+            name: d.name || d.platform,
+            platform: d.platform,
+            enabled: d.enabled,
+          })),
+          isLive: state.isStreaming,
+          isPreparing: state.isPreparing,
+          pin: state.sessionPin,
+        },
+      }).catch(() => {});
+    } else if (eventData.action === 'UPDATE_DETAILS' || eventData.action === 'UPDATE_TITLE') {
+      const newTitle = eventData.title;
+      const newDesc = eventData.description;
+      const titleEl = document.getElementById('lessonTitle');
+      const descEl = document.getElementById('lessonDescription');
+
+      if (newTitle !== undefined && titleEl) {
+        titleEl.value = newTitle;
+        localStorage.setItem('dock_lessonTitle', newTitle);
+      }
+      if (newDesc !== undefined && descEl) {
+        descEl.value = newDesc;
+        localStorage.setItem('dock_lessonDescription', newDesc);
+      }
+      if (newTitle) logDiag(`📱 Broadcast title updated from Remote: "${newTitle}"`);
+    } else if (eventData.action === 'TOGGLE_DESTINATION') {
+      if (state.isStreaming || state.isPreparing) {
+        logDiag('⚠️ Cannot toggle platforms while broadcast is active/preparing.');
+        return;
+      }
+      const destId = eventData.id;
+      const target = (state.destinations || []).find((d) => d.id === destId || d.name === destId || d.platform === destId);
+      if (target) {
+        target.enabled = (eventData.enabled !== undefined) ? !!eventData.enabled : !target.enabled;
+        saveDestinations();
+        logDiag(`📱 Platform "${target.name || target.platform}" ${target.enabled ? 'ENABLED' : 'DISABLED'} from Mobile Remote.`);
+      }
+    } else if (eventData.action === 'REMOTE_GO_LIVE') {
+      if (state.sessionPin && eventData.pin && eventData.pin !== state.sessionPin) {
+        logDiag('⚠️ Mobile Remote GO_LIVE rejected: Invalid PIN.');
+        return;
+      }
+      if (eventData.titleOverride) {
+        const titleEl = document.getElementById('lessonTitle');
+        if (titleEl) {
+          titleEl.value = eventData.titleOverride;
+          localStorage.setItem('dock_lessonTitle', eventData.titleOverride);
+        }
+      }
+      if (!state.isStreaming && !state.isPreparing) {
+        logDiag('📱 Mobile Remote triggered START BROADCAST');
+        handleGoLive();
+      }
+    } else if (eventData.action === 'REMOTE_STOP') {
+      if (state.sessionPin && eventData.pin && eventData.pin !== state.sessionPin) {
+        logDiag('⚠️ Mobile Remote STOP rejected: Invalid PIN.');
+        return;
+      }
+      if (state.isStreaming) {
+        logDiag('📱 Mobile Remote triggered STOP BROADCAST');
+        handleEndStream();
+      }
+    }
+  });
+
+  // Auto-save form inputs & live sync on typing
+  let syncDebounceTimer = null;
   ['lessonTitle', 'lessonDescription'].forEach((id) => {
     const input = document.getElementById(id);
     if (!input) return;
@@ -1866,8 +2599,53 @@ function initEvents() {
     if (saved) input.value = saved;
     input.addEventListener('input', () => {
       localStorage.setItem('dock_' + id, input.value.trim());
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = setTimeout(syncMetadataToBridgeAndRemote, 200);
     });
+    input.addEventListener('change', syncMetadataToBridgeAndRemote);
+    input.addEventListener('blur', syncMetadataToBridgeAndRemote);
   });
+
+  // Pull initial title from bridge if local is empty
+  fetch('http://127.0.0.1:45455/remote-config')
+    .then((r) => r.json())
+    .then((cfg) => {
+      if (!cfg) return;
+      const titleEl = document.getElementById('lessonTitle');
+      const descEl = document.getElementById('lessonDescription');
+      if (titleEl && !titleEl.value && cfg.title) {
+        titleEl.value = cfg.title;
+        localStorage.setItem('dock_lessonTitle', cfg.title);
+      }
+      if (descEl && !descEl.value && cfg.description !== undefined) {
+        descEl.value = cfg.description;
+        localStorage.setItem('dock_lessonDescription', cfg.description);
+      }
+    })
+    .catch(() => {});
+
+  // Continuous bidirectional sync loop (syncs edits from phone every 1.5s if not currently typing on PC)
+  setInterval(() => {
+    const titleEl = document.getElementById('lessonTitle');
+    const descEl = document.getElementById('lessonDescription');
+    const isTypingTitle = (document.activeElement === titleEl);
+    const isTypingDesc = (document.activeElement === descEl);
+
+    fetch('http://127.0.0.1:45455/remote-config')
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (!cfg || !cfg.ok) return;
+        if (!isTypingTitle && titleEl && cfg.title !== undefined && cfg.title !== titleEl.value) {
+          titleEl.value = cfg.title;
+          localStorage.setItem('dock_lessonTitle', cfg.title);
+        }
+        if (!isTypingDesc && descEl && cfg.description !== undefined && cfg.description !== descEl.value) {
+          descEl.value = cfg.description;
+          localStorage.setItem('dock_lessonDescription', cfg.description);
+        }
+      })
+      .catch(() => {});
+  }, 1500);
 }
 
 // Initial Boot Sequence
