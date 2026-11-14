@@ -2678,6 +2678,28 @@ function initEvents() {
       })
       .catch(() => {});
   }, 1500);
+
+  // Heartbeat local rig presence to cloud orchestrator so universal remote URL auto-routes to this active PC
+  async function heartbeatPresence() {
+    try {
+      const res = await fetch('http://127.0.0.1:45455/remote-config');
+      if (!res.ok) return;
+      const cfg = await res.json();
+      if (cfg && cfg.hostIp && cfg.hostIp !== '127.0.0.1') {
+        await fetch(`${state.config.backendUrl}/api/presence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lanIp: cfg.hostIp,
+            bridgePort: cfg.bridgePort || 45455,
+            obsPort: cfg.obsPort || 4455,
+          }),
+        });
+      }
+    } catch (_) {}
+  }
+  setInterval(heartbeatPresence, 15000);
+  setTimeout(heartbeatPresence, 2000);
 }
 
 // Initial Boot Sequence

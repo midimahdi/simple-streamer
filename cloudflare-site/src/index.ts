@@ -61,6 +61,8 @@ export default {
       pathname.startsWith('/auth') ||
       pathname === '' ||
       pathname === '/' ||
+      pathname === '/remote' ||
+      pathname === '/remote.html' ||
       pathname === '/broadcast-status' ||
       pathname === '/end-live' ||
       pathname === '/orchestrate-live'

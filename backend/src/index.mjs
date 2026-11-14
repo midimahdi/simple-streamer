@@ -43,6 +43,9 @@ loadConfig();
 const pendingAuthSessions = new Map();
 const pendingKickPkce = new Map();
 
+// In-memory active presence of running Simple Streamer desktop rigs (updated via dock heartbeats)
+let activePresence = null;
+
 // Periodic cleanup of expired OAuth sessions (TTL: 5 minutes)
 setInterval(() => {
   const now = Date.now();
@@ -869,6 +872,52 @@ function renderAuthErrorHtml(title, message) {
       return sendJson(res, 200, { results });
     } catch (err) {
       return sendJson(res, 500, { error: err.message });
+    }
+  }
+
+  // Active Rig Presence Registration (Dock Heartbeat)
+  if (req.method === 'POST' && pathname === '/api/presence') {
+    let body;
+    try {
+      body = await parseJsonBody(req);
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+    if (body.lanIp) {
+      activePresence = {
+        lanIp: body.lanIp,
+        bridgePort: body.bridgePort || 45455,
+        obsPort: body.obsPort || 4455,
+        machineName: body.machineName || 'OBS Rig',
+        updatedAt: Date.now(),
+      };
+      return sendJson(res, 200, { ok: true });
+    }
+    return sendJson(res, 400, { error: 'lanIp is required' });
+  }
+
+  // Active Rig Query
+  if (req.method === 'GET' && pathname === '/api/presence') {
+    const isRecent = activePresence && (Date.now() - activePresence.updatedAt < 90000);
+    return sendJson(res, 200, {
+      active: !!isRecent,
+      presence: isRecent ? activePresence : null,
+    });
+  }
+
+  // Smart Mobile Remote Dynamic Router:
+  // If an active desktop rig has heartbeated recently, immediately redirect mobile browsers
+  // to the local bridge HTTP endpoint (avoiding all mixed-content and stale IP issues).
+  if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/remote' || pathname === '/remote.html')) {
+    const isRecent = activePresence && (Date.now() - activePresence.updatedAt < 90000);
+    if (isRecent) {
+      const redirectTarget = `http://${activePresence.lanIp}:${activePresence.bridgePort}/remote`;
+      setCorsHeaders(res);
+      res.writeHead(302, {
+        Location: redirectTarget,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      });
+      return res.end();
     }
   }
 
