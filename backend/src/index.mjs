@@ -44,6 +44,8 @@ const pendingAuthSessions = new Map();
 const pendingKickPkce = new Map();
 
 // In-memory active presence of running Simple Streamer desktop rigs (updated via dock heartbeats)
+// Set ENABLE_PRESENCE_REDIRECT to true if dynamic cloud-level 302 routing is desired.
+const ENABLE_PRESENCE_REDIRECT = false;
 let activePresence = null;
 
 // Periodic cleanup of expired OAuth sessions (TTL: 5 minutes)
@@ -908,7 +910,7 @@ function renderAuthErrorHtml(title, message) {
   // Smart Mobile Remote Dynamic Router:
   // If an active desktop rig has heartbeated recently, immediately redirect mobile browsers
   // to the local bridge HTTP endpoint (avoiding all mixed-content and stale IP issues).
-  if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/remote' || pathname === '/remote.html')) {
+  if (ENABLE_PRESENCE_REDIRECT && (req.method === 'GET' || req.method === 'HEAD') && (pathname === '/remote' || pathname === '/remote.html')) {
     const isRecent = activePresence && (Date.now() - activePresence.updatedAt < 90000);
     if (isRecent) {
       const redirectTarget = `http://${activePresence.lanIp}:${activePresence.bridgePort}/remote`;

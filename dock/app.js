@@ -2679,8 +2679,10 @@ function initEvents() {
       .catch(() => {});
   }, 1500);
 
-  // Heartbeat local rig presence to cloud orchestrator so universal remote URL auto-routes to this active PC
+  // Heartbeat local rig presence to cloud orchestrator (Disabled by default; enable if cloud routing needed)
+  const ENABLE_PRESENCE_HEARTBEAT = false;
   async function heartbeatPresence() {
+    if (!ENABLE_PRESENCE_HEARTBEAT) return;
     try {
       const res = await fetch('http://127.0.0.1:45455/remote-config');
       if (!res.ok) return;
@@ -2698,8 +2700,10 @@ function initEvents() {
       }
     } catch (_) {}
   }
-  setInterval(heartbeatPresence, 15000);
-  setTimeout(heartbeatPresence, 2000);
+  if (ENABLE_PRESENCE_HEARTBEAT) {
+    setInterval(heartbeatPresence, 15000);
+    setTimeout(heartbeatPresence, 2000);
+  }
 }
 
 // Initial Boot Sequence
