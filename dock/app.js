@@ -1677,26 +1677,26 @@ async function handleGoLive() {
     }).catch(() => {});
   }
 
-  // 3. Start OBS Stream
+  // 3. Populate state.activeBroadcast BEFORE triggering OBS start so that any
+  // instantaneous StreamStateChanged events have immediate access to destination cards.
+  state.activeBroadcast = {
+    title,
+    description,
+    destinations: returnedDests.map((d) => {
+      const original = enabledTargets.find((t) => t.id === d.id);
+      return {
+        ...d,
+        name: d.name || original?.name || d.platform.toUpperCase(),
+        isLive: false,
+        status: d.ok ? 'starting' : 'failed',
+        errorMessage: d.error || null,
+      };
+    }),
+  };
+
   try {
     logDiag('Starting OBS Stream...');
     await state.obs.call('StartStream');
-
-    state.activeBroadcast = {
-      title,
-      description,
-      destinations: returnedDests.map((d) => {
-        const original = enabledTargets.find((t) => t.id === d.id);
-        return {
-          ...d,
-          name: d.name || original?.name || d.platform.toUpperCase(),
-          isLive: false,
-          status: d.ok ? 'starting' : 'failed',
-          errorMessage: d.error || null,
-        };
-      }),
-    };
-
     setLiveUI(true);
   } catch (err) {
     state.isPreparing = false;
@@ -1719,6 +1719,23 @@ function setLiveUI(isLive) {
   state.isEnding = false;
 
   if (isLive) {
+    // Defensive fallback: If activeBroadcast.destinations is missing/empty, populate from enabled destinations
+    if (!state.activeBroadcast?.destinations?.length) {
+      const enabled = state.destinations.filter((d) => d.enabled);
+      state.activeBroadcast = {
+        title: state.activeBroadcast?.title || 'Live Stream',
+        description: state.activeBroadcast?.description || '',
+        destinations: enabled.map((d) => ({
+          id: d.id,
+          platform: d.platform,
+          name: d.name || d.platform.toUpperCase(),
+          isLive: false,
+          status: 'starting',
+          errorMessage: null,
+        })),
+      };
+    }
+
     setStatus('LIVE', 'live');
     if (el.liveContainer) el.liveContainer.style.display = 'block';
     if (el.inputGroup) el.inputGroup.style.display = 'none';
