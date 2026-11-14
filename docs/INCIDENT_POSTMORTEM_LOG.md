@@ -253,4 +253,35 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
    - Updated `backend/src/youtube.mjs` to auto-delete orphaned scheduled broadcasts via the YouTube Data API if `transition?broadcastStatus=complete` is rejected because the stream never transitioned to live.
 4. **Cloud Run Redeployed**: Shipped revision `00011-f4c` to production serving 100% of traffic.
 
+---
+
+## 14. Mobile Remote Multi-Rig Collision, Idle Bridge Hijacking, and OBS Liveness Gating
+
+### What Happened
+- During multi-rig testing on the same Wi-Fi subnet (`192.168.8.x`), opening the mobile remote on a smartphone caused it to display platform targets from the developer's MacBook Air (e.g. YouTube, Twitch, Kick) instead of the Mosque PC (Facebook + YouTube), even though OBS was open only on the Mosque PC and closed on the Mac.
+- Furthermore, attempting to use a cloud-assisted router (`https://.../remote` redirecting to the active rig) failed when internet or mixed-content policies intervened.
+
+### Root Causes
+1. **Background Bridge Daemons Without OBS Liveness Verification**:
+   - The macOS bridge (`simple-streamer-bridge`) runs as a persistent background daemon on port 45455 via `launchd`.
+   - When the phone opened the remote app, it fell back to or probed `192.168.8.101` (Mac).
+   - Because the bridge served `/remote-config` directly from cached disk files (`config.json`) without verifying if OBS Studio was actually running, it responded with `ok: true` and the Mac's credentials, hijacking the phone's auto-discovery before the Mosque PC could be probed.
+2. **Cloud vs. Local Architecture Pitfalls**:
+   - Public HTTPS domains cannot reliably query local private IP subnets (`192.168.x.x`) due to Private Network Access (PNA) and Mixed Content restrictions enforced by iOS Safari and Android Chrome.
+   - Stateless Cloud Run containers experience memory drift across instances, making centralized single-variable presence unreliable without external database/Redis storage.
+3. **Aggressive Mobile Caching**:
+   - Mobile browsers cache `remote.html` and Service Workers, causing the phone to run older client scripts locked to previously cached IP addresses.
+
+### Permanent Patches Implemented
+1. **OBS Liveness Gating in Bridge Daemons**:
+   - Updated macOS bridge (`simple-streamer-bridge.m`) and Windows bridge (`bridge.ps1` and `install.ps1`) to perform a 150ms TCP loopback probe to OBS WebSocket port `4455`.
+   - `/remote-config` now explicitly returns `obsOnline: true/false` and `machineName` (e.g. `"Mosque PC"` vs `"Mahdi’s MacBook Air"`).
+2. **Multi-Broadcaster LAN Rig Switcher**:
+   - Updated `dock/remote.html` to maintain an active registry of discovered rigs on the subnet (`discoveredRigs`).
+   - If the current machine has OBS closed, the app surfaces an `OBS Closed` notice and automatically switches to any machine where OBS is running.
+   - If multiple machines have OBS running simultaneously, a persistent top switcher bar allows 1-tap switching between broadcasting rigs without page reloads.
+3. **Local-First PWA Topology**:
+   - Disabled the cloud presence redirect, ensuring the system remains 100% offline-capable and immune to WAN outages.
+
+
 
