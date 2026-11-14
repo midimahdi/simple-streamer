@@ -241,11 +241,19 @@ try {
 } catch {}
 
 $listener = New-Object System.Net.HttpListener
+$listener.Prefixes.Add("http://127.0.0.1:45455/")
+
+try {
+    $ipObj = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^127\.' -and $_.IPAddress -notmatch '^169\.254\.' } | Select-Object -First 1
+    if ($ipObj) {
+        $localIp = $ipObj.IPAddress
+        try { $listener.Prefixes.Add("http://$($localIp):45455/") } catch {}
+    }
+} catch {}
+
 try {
     $listener.Prefixes.Add("http://+:45455/")
-} catch {
-    $listener.Prefixes.Add("http://127.0.0.1:45455/")
-}
+} catch {}
 try {
     $listener.Start()
 } catch { exit }

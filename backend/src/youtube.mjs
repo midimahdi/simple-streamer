@@ -243,6 +243,17 @@ export async function endYouTubeBroadcast(broadcastId, refreshToken) {
 
     if (!res.ok) {
       const err = await res.text();
+      // If broadcast never transitioned to live (still ready/scheduled), transition to complete fails with 400.
+      // In that case, delete the abandoned scheduled broadcast so it doesn't linger in YouTube Studio.
+      if (res.status === 400) {
+        try {
+          await fetch(`${YT_API_BASE}/liveBroadcasts?id=${encodeURIComponent(broadcastId)}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          return { ok: true, deletedOrphaned: true };
+        } catch (_) {}
+      }
       return { ok: false, error: err };
     }
     return { ok: true };

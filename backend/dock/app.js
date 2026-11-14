@@ -368,19 +368,20 @@ async function updateRemotePanelInfo() {
 
   const mdnsUrl = `http://simple-streamer.local:${bridgePort}/remote?pin=${state.sessionPin}&fallback=${hostIp}&port=${obsPort}`;
   const ipUrl = `http://${hostIp}:${bridgePort}/remote?pin=${state.sessionPin}&port=${obsPort}`;
+  const primaryUrl = hostIp !== '127.0.0.1' ? ipUrl : mdnsUrl;
 
   if (el.remoteUrlDisplay) {
-    el.remoteUrlDisplay.textContent = `http://simple-streamer.local:${bridgePort}/remote`;
+    el.remoteUrlDisplay.textContent = `http://${hostIp}:${bridgePort}/remote`;
   }
   if (el.remoteMdnsDisplay) {
-    el.remoteMdnsDisplay.textContent = `or direct IP: ${ipUrl}`;
+    el.remoteMdnsDisplay.textContent = hostIp !== '127.0.0.1' ? `mDNS fallback: ${mdnsUrl}` : '';
   }
 
   if (el.remoteQrContainer && typeof QRCode !== 'undefined') {
     el.remoteQrContainer.innerHTML = '';
     try {
       state.remoteQr = new QRCode(el.remoteQrContainer, {
-        text: mdnsUrl,
+        text: primaryUrl,
         width: 160,
         height: 160,
         colorDark: '#0d0f12',
@@ -395,13 +396,13 @@ async function updateRemotePanelInfo() {
   if (el.btnCopyRemoteUrl) {
     el.btnCopyRemoteUrl.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(mdnsUrl);
+        await navigator.clipboard.writeText(primaryUrl);
         el.btnCopyRemoteUrl.textContent = '✓ Copied to Clipboard!';
         setTimeout(() => {
           if (el.btnCopyRemoteUrl) el.btnCopyRemoteUrl.textContent = '📋 Copy Remote Link';
         }, 2000);
       } catch (_) {
-        prompt('Copy this link:', mdnsUrl);
+        prompt('Copy this link:', primaryUrl);
       }
     };
   }
@@ -2481,6 +2482,20 @@ function initEvents() {
     if (data.outputActive && !state.isStreaming) {
       setLiveUI(true);
     } else if (!data.outputActive && state.isStreaming) {
+      // If stream was stopped via OBS native button or external hotkey,
+      // trigger clean teardown across remote cloud platforms
+      if (state.activeBroadcast?.destinations?.length > 0) {
+        fetch(`${state.config.backendUrl}/end-live`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
+          },
+          body: JSON.stringify({
+            destinations: state.activeBroadcast.destinations,
+          }),
+        }).catch(() => {});
+      }
       setLiveUI(false);
       setTimeout(restoreOriginalStreamServiceSettings, 1000);
     }
