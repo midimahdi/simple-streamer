@@ -367,13 +367,34 @@ while ($listener.IsListening) {
                 if ($ipObj) { $localIp = $ipObj.IPAddress }
             } catch {}
 
+            $obsRunning = $false
+            try {
+                $tcp = New-Object System.Net.Sockets.TcpClient
+                $iar = $tcp.BeginConnect("127.0.0.1", $port, $null, $null)
+                $success = $iar.AsyncWaitHandle.WaitOne(200, $false)
+                if ($success -and $tcp.Connected) {
+                    $obsRunning = $true
+                    $tcp.EndConnect($iar)
+                }
+                $tcp.Close()
+            } catch {}
+
+            $cfgFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\config.json"
             $bState = Get-BroadcastState
             $bTitle = if ($bState.title) { $bState.title } else { "Mosque Live Broadcast" }
             $bDesc = if ($bState.description) { $bState.description } else { "" }
             $bDest = if ($bState.destinations) { $bState.destinations } else { @() }
+            if (Test-Path $cfgFile) {
+                try {
+                    $cObj = Get-Content $cfgFile -Raw | ConvertFrom-Json
+                    if ($cObj.outputs) { $bDest = $cObj.outputs }
+                } catch {}
+            }
 
             $respObj = @{
                 ok = $true
+                obsOnline = $obsRunning
+                machineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "Mosque PC" }
                 bridgePort = 45455
                 obsPort = $port
                 hostIp = $localIp

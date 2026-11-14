@@ -45,6 +45,24 @@ static NSString* get_local_lan_ip() {
     return address;
 }
 
+static BOOL is_obs_online(int port) {
+    int s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) return NO;
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 150000; // 150ms timeout
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+    int res = connect(s, (struct sockaddr*)&addr, sizeof(addr));
+    close(s);
+    return (res == 0);
+}
+
 static void *udp_discovery_thread(void *arg) {
     int udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_fd < 0) return NULL;
@@ -520,8 +538,12 @@ static void handle_client(int client_fd, struct sockaddr_in client_addr) {
                         }
                     }
                     NSDictionary *bState = get_broadcast_state();
+                    BOOL obsOnline = is_obs_online(obsPort);
+                    NSString *mName = [[NSHost currentHost] localizedName] ?: @"MacBook";
                     NSMutableDictionary *respDict = [NSMutableDictionary dictionaryWithDictionary:@{
                         @"ok": @YES,
+                        @"obsOnline": @(obsOnline),
+                        @"machineName": mName,
                         @"bridgePort": @(BRIDGE_PORT),
                         @"obsPort": @(obsPort),
                         @"hostIp": lanIp ?: @"127.0.0.1",

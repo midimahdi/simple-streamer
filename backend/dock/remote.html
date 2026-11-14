@@ -870,6 +870,123 @@
     .flash-stage {
       animation: flashAmberGlow 0.35s cubic-bezier(0.1, 0.9, 0.2, 1) !important;
     }
+
+    /* Multi-Rig Switcher Bar */
+    .rig-switcher-bar {
+      display: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      margin-bottom: 10px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .rig-switcher-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .rig-buttons-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .btn-rig-pill {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-rig-pill.active {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: var(--accent-green);
+      color: var(--accent-green);
+    }
+
+    .btn-rig-pill:active {
+      transform: scale(0.96);
+    }
+
+    .rig-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .btn-rig-pill.active .rig-dot {
+      background: var(--accent-green);
+      box-shadow: 0 0 6px var(--accent-green);
+    }
+
+    /* OBS Closed Banner */
+    .obs-closed-notice {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      animation: slideIn 0.2s ease-out;
+    }
+
+    .obs-closed-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .obs-closed-tag {
+      background: var(--accent-red);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 900;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .obs-closed-desc {
+      font-size: 11px;
+      color: #fca5a5;
+    }
+
+    .btn-switch-active {
+      background: var(--accent-green);
+      border: none;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -894,6 +1011,26 @@
       </div>
     </div>
   </header>
+
+  <!-- Multi-Rig Switcher Bar (Surfaces when multiple rigs exist on Wi-Fi) -->
+  <div id="rigSwitcherBar" class="rig-switcher-bar">
+    <div class="rig-switcher-title">
+      <span class="rig-dot" style="background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green);"></span>
+      <span>Broadcasters:</span>
+    </div>
+    <div id="rigButtonsWrap" class="rig-buttons-wrap"></div>
+  </div>
+
+  <!-- OBS Closed Alert Banner -->
+  <div id="obsClosedNotice" class="obs-closed-notice" style="display: none;">
+    <div class="obs-closed-left">
+      <span class="obs-closed-tag">OBS Closed</span>
+      <span class="obs-closed-desc">OBS is closed on <strong id="obsClosedHost">this machine</strong>.</span>
+    </div>
+    <button id="btnSwitchToActive" class="btn-switch-active" style="display: none;">
+      Switch to Active Stream
+    </button>
+  </div>
 
   <!-- 1. Video Monitor & Integrated Audio Card -->
   <div class="studio-card">
@@ -1179,6 +1316,11 @@
       manualIpInput: document.getElementById('manualIpInput'),
       btnConnectManualIp: document.getElementById('btnConnectManualIp'),
       btnCloseSwitchPc: document.getElementById('btnCloseSwitchPc'),
+      rigSwitcherBar: document.getElementById('rigSwitcherBar'),
+      rigButtonsWrap: document.getElementById('rigButtonsWrap'),
+      obsClosedNotice: document.getElementById('obsClosedNotice'),
+      obsClosedHost: document.getElementById('obsClosedHost'),
+      btnSwitchToActive: document.getElementById('btnSwitchToActive'),
     };
 
     // --- Tactile Feedback System (Haptic Vibration + High-Visibility Flash Backup) ---
@@ -1248,11 +1390,81 @@
       if (el.switchPcModal) el.switchPcModal.style.display = 'none';
     }
 
+    // --- Rig Registry & Multi-Broadcaster Switcher ---
+    const discoveredRigs = new Map();
+
+    function updateRigSwitcherUI() {
+      if (!el.rigSwitcherBar || !el.rigButtonsWrap) return;
+      const allRigs = Array.from(discoveredRigs.values());
+      const onlineRigs = allRigs.filter(r => r.obsOnline);
+
+      // Show switcher bar whenever 2+ rigs are discovered on LAN
+      if (allRigs.length > 1) {
+        el.rigSwitcherBar.style.display = 'flex';
+        el.rigButtonsWrap.innerHTML = '';
+        allRigs.forEach(rig => {
+          const btn = document.createElement('button');
+          const isCurrent = (rig.ip === hostIp);
+          btn.className = `btn-rig-pill ${isCurrent ? 'active' : ''}`;
+          btn.innerHTML = `
+            <span class="rig-dot" style="${rig.obsOnline ? 'background: #10b981; box-shadow: 0 0 6px #10b981;' : 'background: #647087;'}"></span>
+            <span>${rig.machineName || rig.ip}</span>
+            ${isCurrent ? '<span style="font-size: 9px; opacity: 0.85;">(Connected)</span>' : ''}
+          `;
+          btn.onclick = () => switchToRig(rig.ip);
+          el.rigButtonsWrap.appendChild(btn);
+        });
+      } else {
+        el.rigSwitcherBar.style.display = 'none';
+      }
+
+      // Check current rig OBS liveness
+      const currentRig = discoveredRigs.get(hostIp);
+      if (currentRig && !currentRig.obsOnline) {
+        if (el.obsClosedNotice) {
+          el.obsClosedNotice.style.display = 'flex';
+          if (el.obsClosedHost) el.obsClosedHost.textContent = currentRig.machineName || hostIp;
+        }
+        if (onlineRigs.length > 0 && el.btnSwitchToActive) {
+          const target = onlineRigs[0];
+          el.btnSwitchToActive.style.display = 'inline-block';
+          el.btnSwitchToActive.textContent = `Switch to ${target.machineName || target.ip}`;
+          el.btnSwitchToActive.onclick = () => switchToRig(target.ip);
+        } else if (el.btnSwitchToActive) {
+          el.btnSwitchToActive.style.display = 'none';
+        }
+      } else {
+        if (el.obsClosedNotice) el.obsClosedNotice.style.display = 'none';
+      }
+    }
+
+    function switchToRig(targetHost) {
+      if (!targetHost) return;
+      if (hostIp === targetHost && state.isConnected) return;
+      hostIp = targetHost;
+      localStorage.setItem('simple_streamer_last_ip', targetHost);
+      if (el.currentHostText) el.currentHostText.textContent = targetHost;
+
+      if (state.ws) {
+        try { state.ws.close(); } catch (_) {}
+        state.ws = null;
+      }
+      state.isConnected = false;
+      setConnStatus(false);
+
+      const rig = discoveredRigs.get(targetHost);
+      if (rig) {
+        applyDiscoveredHost(targetHost, rig);
+      }
+      updateRigSwitcherUI();
+      connectObs();
+    }
+
     async function probeBridge(targetHost) {
       if (!targetHost) return null;
       try {
         const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 600);
+        const tid = setTimeout(() => controller.abort(), 650);
         const res = await fetch(`http://${targetHost}:${bridgePort}/remote-config`, {
           mode: 'cors',
           signal: controller.signal
@@ -1260,88 +1472,79 @@
         clearTimeout(tid);
         if (res.ok) {
           const cfg = await res.json();
-          if (cfg && cfg.ok) return cfg;
+          if (cfg && cfg.ok) {
+            cfg.ip = targetHost;
+            cfg.machineName = cfg.machineName || targetHost;
+            cfg.obsOnline = (cfg.obsOnline !== false);
+            discoveredRigs.set(targetHost, cfg);
+            updateRigSwitcherUI();
+            return cfg;
+          }
         }
       } catch (_) {}
       return null;
     }
 
-    async function startAutoDiscovery() {
-      if (autoDiscoveryRunning || state.isConnected) return;
+    async function startAutoDiscovery(forceSwitch = false) {
+      if (autoDiscoveryRunning) return;
       autoDiscoveryRunning = true;
-      if (el.discoveryStatusText) el.discoveryStatusText.textContent = 'Probing simple-streamer.local...';
+      if (el.discoveryStatusText) el.discoveryStatusText.textContent = 'Discovering active OBS rigs on network...';
 
-      // 1. Try universal mDNS hostname simple-streamer.local
-      const mdnsRes = await probeBridge('simple-streamer.local');
-      if (mdnsRes) {
-        applyDiscoveredHost('simple-streamer.local', mdnsRes);
+      // 1. Probe known primary hosts and universal mDNS endpoints
+      await Promise.all([
+        probeBridge('simple-streamer.local'),
+        probeBridge('simple-streamer-2.local'),
+        probeBridge('192.168.8.100'),
+        probeBridge('192.168.8.101'),
+        (fallbackIp ? probeBridge(fallbackIp) : Promise.resolve(null)),
+      ]);
+
+      // If current host has OBS closed, auto-switch immediately to any discovered online rig
+      const currentRig = discoveredRigs.get(hostIp);
+      const onlineRigs = Array.from(discoveredRigs.values()).filter(r => r.obsOnline);
+      if ((forceSwitch || !currentRig || !currentRig.obsOnline) && onlineRigs.length > 0) {
+        switchToRig(onlineRigs[0].ip);
         autoDiscoveryRunning = false;
         return;
       }
 
-      // 2. Discover active subnets dynamically from any modem / network configuration
-      const savedFallback = localStorage.getItem('simple_streamer_fallback_ip');
+      // 2. Discover active subnets dynamically across standard local router pools
       const potentialIps = [
         fallbackIp,
-        savedFallback,
+        localStorage.getItem('simple_streamer_fallback_ip'),
         hostIp,
         savedIp
       ].filter(ip => ip && ip !== 'simple-streamer.local' && ip.includes('.'));
 
-      const subnets = new Set();
-      let lastKnownOctet = 5;
-
+      const subnets = new Set(['192.168.8', '192.168.1', '192.168.0', '192.168.100', '10.0.0']);
       for (const ipStr of potentialIps) {
         const parts = ipStr.split('.');
-        if (parts.length === 4) {
-          subnets.add(`${parts[0]}.${parts[1]}.${parts[2]}`);
-          const octet = parseInt(parts[3], 10);
-          if (!isNaN(octet) && octet > 1 && octet < 255) lastKnownOctet = octet;
-        }
+        if (parts.length === 4) subnets.add(`${parts[0]}.${parts[1]}.${parts[2]}`);
       }
 
-      // Fallback defaults covering routers worldwide (including 192.168.8 for 4G/fiber routers)
-      subnets.add('192.168.8');
-      subnets.add('192.168.1');
-      subnets.add('192.168.0');
-      subnets.add('192.168.100');
-      subnets.add('10.0.0');
-
       for (const subnet of subnets) {
-        if (state.isConnected) break;
-        if (el.discoveryStatusText) el.discoveryStatusText.textContent = `Scanning ${subnet}.* on network...`;
-
-        // Comprehensive search pool:
-        // A) Immediate neighborhood of last known IP (±25)
-        // B) Standard low DHCP pool (2..40)
-        // C) Standard mid/high DHCP pools (100..150, 200..230)
         const candidates = new Set();
-        for (let o = Math.max(2, lastKnownOctet - 25); o <= Math.min(254, lastKnownOctet + 25); o++) {
-          candidates.add(`${subnet}.${o}`);
-        }
-        for (let o = 2; o <= 40; o++) candidates.add(`${subnet}.${o}`);
-        for (let o = 100; o <= 150; o++) candidates.add(`${subnet}.${o}`);
-        for (let o = 200; o <= 230; o++) candidates.add(`${subnet}.${o}`);
+        for (let o = 2; o <= 25; o++) candidates.add(`${subnet}.${o}`);
+        for (let o = 100; o <= 125; o++) candidates.add(`${subnet}.${o}`);
+        const candidateList = Array.from(candidates).filter(ip => ip !== hostIp && !discoveredRigs.has(ip));
 
-        const candidateList = Array.from(candidates).filter(ip => ip !== hostIp);
-
-        // Probe in parallel chunks of 10 for rapid sub-second resolution
         for (let i = 0; i < candidateList.length; i += 10) {
-          if (state.isConnected) break;
           const chunk = candidateList.slice(i, i + 10);
-          const results = await Promise.all(
-            chunk.map(ip => probeBridge(ip).then(cfg => cfg ? { ip, cfg } : null))
-          );
-          const found = results.find(r => r !== null);
-          if (found) {
-            applyDiscoveredHost(found.ip, found.cfg);
+          await Promise.all(chunk.map(ip => probeBridge(ip)));
+          const active = Array.from(discoveredRigs.values()).filter(r => r.obsOnline);
+          if ((forceSwitch || !currentRig || !currentRig.obsOnline) && active.length > 0) {
+            switchToRig(active[0].ip);
             autoDiscoveryRunning = false;
             return;
           }
         }
       }
 
-      if (el.discoveryStatusText) el.discoveryStatusText.textContent = 'Could not auto-detect OBS. Scan QR or enter IP.';
+      if (el.discoveryStatusText) {
+        el.discoveryStatusText.textContent = onlineRigs.length > 0
+          ? `Connected to ${onlineRigs[0].machineName || onlineRigs[0].ip}`
+          : 'Could not auto-detect active OBS. Check if OBS is running or scan QR.';
+      }
       autoDiscoveryRunning = false;
     }
 
@@ -1366,7 +1569,6 @@
         }
       }
       hideSwitchPcModal();
-      connectObs();
     }
 
     // --- Authentication Challenge Handler ---
@@ -1399,13 +1601,20 @@
       }
 
       if (cfg) {
-        if (cfg.obsPass) obsPass = cfg.obsPass;
-        if (cfg.obsPort) obsPort = cfg.obsPort;
-        if (cfg.title) {
-          state.title = cfg.title;
-          el.streamTitleDisplay.textContent = cfg.title;
-        }
-        if (cfg.description !== undefined) {
+        applyDiscoveredHost(hostIp, cfg);
+        updateRigSwitcherUI();
+      }
+
+      // If this machine has OBS closed or wasn't reachable, find the active rig immediately!
+      if (!cfg || !cfg.obsOnline) {
+        startAutoDiscovery(true);
+      } else {
+        // Run silent probe in background to populate switcher bar if other rigs exist
+        setTimeout(() => startAutoDiscovery(false), 1200);
+      }
+
+      connectObs();
+    }
           state.description = cfg.description;
           if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
         }
