@@ -1300,12 +1300,12 @@
         }
       }
 
-      // Fallback defaults covering 99% of home, office, and mosque routers worldwide
-      if (subnets.size === 0) {
-        subnets.add('192.168.1');
-        subnets.add('192.168.0');
-        subnets.add('10.0.0');
-      }
+      // Fallback defaults covering routers worldwide (including 192.168.8 for 4G/fiber routers)
+      subnets.add('192.168.8');
+      subnets.add('192.168.1');
+      subnets.add('192.168.0');
+      subnets.add('192.168.100');
+      subnets.add('10.0.0');
 
       for (const subnet of subnets) {
         if (state.isConnected) break;
@@ -1455,18 +1455,22 @@
       state.ws.onclose = () => {
         state.isConnected = false;
         state.isIdentified = false;
-        setConnectionStatus('error');
         stopPreviewLoop();
         if (state.isPageVisible) {
           failedAttempts++;
           if (failedAttempts >= 2) {
             startAutoDiscovery();
           }
-          if (failedAttempts >= 4) {
+          if (failedAttempts >= 4 && !autoDiscoveryRunning) {
             showSwitchPcModal();
           }
         }
-        setTimeout(connectObs, 2500);
+        if (!autoDiscoveryRunning) {
+          setConnectionStatus('error');
+        }
+        setTimeout(() => {
+          if (!state.isConnected) connectObs();
+        }, 3000);
       };
 
       state.ws.onerror = () => {
