@@ -224,3 +224,33 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
 - Updated `bridge.ps1` (and `installer/windows/install.ps1`) to automatically inspect incoming POST `/save-destinations` payloads: if `outputs` is present and non-empty and `armed` was not explicitly provided, the bridge automatically sets `"armed": true`.
 - Hot-reloaded `SimpleStreamerBridge` on the production Windows streaming PC.
 
+---
+
+## 13. Missing Live Platform Cards, Mobile Remote LAN Block, and Orphaned YouTube Broadcasts
+
+### What Happened
+1. **Missing Platform Cards**: During live streaming, the dock displayed the live timer and bitrate metrics, but the platform status cards were completely absent from the UI.
+2. **Mobile Remote "Page Unavailable"**: Scanning the QR code failed to open the mobile remote control app on phones connected to the same Wi-Fi.
+3. **Orphaned Scheduled Broadcast in YouTube Studio**: After stopping a short test stream, the YouTube livestream remained in YouTube Studio in "Scheduled" status rather than "Ended / Complete".
+
+### Root Causes
+1. **Race Condition in Start Sequence**: In `dock/app.js`, `await state.obs.call('StartStream')` was invoked before `state.activeBroadcast` was assigned. As soon as OBS started streaming, the WebSocket event `StreamStateChanged` immediately triggered `setLiveUI(true)`. At that millisecond, `activeBroadcast.destinations` was empty, clearing the live container and rendering 0 cards.
+2. **Missing Inbound Firewall Rule & Unresolvable mDNS**:
+   - The QR code encoded an mDNS URL (`http://simple-streamer.local:45455/remote`), which mobile browsers cannot resolve without local Bonjour/Avahi services.
+   - The local bridge on Windows was listening only on `127.0.0.1` and Windows Firewall dropped incoming connections on ports 4455 and 45455.
+3. **Teardown Skipped + YouTube Auto-Start Threshold**:
+   - Because `state.activeBroadcast.destinations` was empty due to the race condition, `handleStopLive()` skipped sending the `/end-live` API call.
+   - The test stream only ran for ~13 seconds, below YouTube's ~20-second ingest threshold to auto-switch from `ready` to `live`.
+
+### Permanent Patches Implemented
+1. **Pre-populate `state.activeBroadcast`**: Assigned before `StartStream` is called, and added a defensive fallback in `setLiveUI(true)` that auto-populates from `state.destinations.filter(d => d.enabled)` if ever empty.
+2. **Dynamic LAN IP Listener & Firewall Rule**:
+   - Added inbound Windows Firewall rule for TCP 4455 and 45455.
+   - Updated `bridge.ps1` to bind dynamically to the machine's actual LAN IPv4 address (`http://192.168.8.100:45455/`) and serve `remote.html` directly from disk.
+   - Changed QR code generation to use the actual LAN IP URL.
+3. **Automatic Orphan Deletion & Universal Teardown**:
+   - Updated `StreamStateChanged` to invoke `/end-live` even when the stream is stopped via OBS native controls.
+   - Updated `backend/src/youtube.mjs` to auto-delete orphaned scheduled broadcasts via the YouTube Data API if `transition?broadcastStatus=complete` is rejected because the stream never transitioned to live.
+4. **Cloud Run Redeployed**: Shipped revision `00011-f4c` to production serving 100% of traffic.
+
+
