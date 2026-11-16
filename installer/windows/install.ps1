@@ -70,6 +70,9 @@ function Set-ObsDockConfig($file) {
         }
 
         $newJson = $docks | ConvertTo-Json -Compress
+        if (-not $newJson.Trim().StartsWith("[")) {
+            $newJson = "[$newJson]"
+        }
         $content = [System.Text.RegularExpressions.Regex]::Replace($content, '(?m)^ExtraBrowserDocks=.*$', "ExtraBrowserDocks=$newJson")
     } else {
         $newEntry = "ExtraBrowserDocks=[{`"title`":`"$DockName`",`"url`":`"$DockUrl`"}]"
