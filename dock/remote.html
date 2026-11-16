@@ -1695,19 +1695,6 @@
 
       connectObs();
     }
-          state.description = cfg.description;
-          if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
-        }
-        if (cfg.destinations && Array.isArray(cfg.destinations)) {
-          state.destinations = cfg.destinations;
-          renderDestinationsPills(cfg.destinations);
-        }
-        hideSwitchPcModal();
-      } else {
-        startAutoDiscovery();
-      }
-      connectObs();
-    }
 
     // --- WebSocket Communication Engine ---
     function sendWs(op, d) {
