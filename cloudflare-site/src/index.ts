@@ -1,3 +1,6 @@
+import { ICON_SVG, ICON_192_PNG_BASE64, ICON_512_PNG_BASE64, base64ToBytes } from './assets';
+import { ROBOTS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT, SCHEMA_JSON_LD } from './seo';
+
 const CLOUD_RUN_ORIGIN = 'https://mosque-stream-orchestrator-259167398353.europe-west1.run.app';
 const SUPABASE_PROJECT_URL = 'https://uqxlgyhmbhzeyfcgxxji.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxeGxneWhtYmh6ZXlmY2d4eGppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2ODYxNzgsImV4cCI6MjExMDI2MjE3OH0.nr6UxjL7D_EhSfzHir_O4602yEE8aks-S6Wj2b7hR8Q';
@@ -18,6 +21,83 @@ export default {
       'Pragma': 'no-cache',
       'Expires': '0',
     };
+
+    // SEO, Machine Discovery & Static Brand Icons
+    if (pathname === '/robots.txt') {
+      return new Response(ROBOTS_TXT, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    }
+
+    if (pathname === '/sitemap.xml') {
+      return new Response(SITEMAP_XML, {
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    }
+
+    if (pathname === '/llms.txt') {
+      return new Response(LLMS_TXT, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    }
+
+    if (pathname === '/llms-full.txt') {
+      return new Response(LLMS_FULL_TXT, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    }
+
+    if (pathname === '/icon.svg' || pathname === '/favicon.svg') {
+      return new Response(ICON_SVG, {
+        headers: {
+          'Content-Type': 'image/svg+xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=604800, immutable',
+        },
+      });
+    }
+
+    if (pathname === '/favicon.ico') {
+      return new Response(ICON_SVG, {
+        headers: {
+          'Content-Type': 'image/svg+xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=604800, immutable',
+        },
+      });
+    }
+
+    if (pathname === '/icon.png' || pathname === '/icon-512.png') {
+      return new Response(base64ToBytes(ICON_512_PNG_BASE64), {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=604800, immutable',
+        },
+      });
+    }
+
+    if (
+      pathname === '/icon-192.png' ||
+      pathname === '/apple-touch-icon.png' ||
+      pathname === '/apple-touch-icon-precomposed.png'
+    ) {
+      return new Response(base64ToBytes(ICON_192_PNG_BASE64), {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=604800, immutable',
+        },
+      });
+    }
 
     // User Portal: Auth & Device Management
     if (pathname === '/login' || pathname === '/auth/login') {
@@ -130,13 +210,64 @@ export default {
   },
 };
 
-function layout(title: string, bodyContent: string, extraHead: string = ''): string {
+function escapeAttr(str: string): string {
+  return str.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function layout(
+  title: string,
+  bodyContent: string,
+  extraHead: string = '',
+  description?: string,
+  canonicalPath: string = '/'
+): string {
+  const pageTitle = title.includes('Simple Streamer') ? title : `${title} — Simple Streamer`;
+  const pageDesc = description || 'Stream to YouTube, Facebook, Twitch & Kick simultaneously from OBS Studio with 0% extra CPU lag. Free, open-source multi-streaming with phone remote control.';
+  const canonicalUrl = `https://simple-streamer.bdjlmn.com${canonicalPath.replace(/\/+$/, '') || '/'}`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${title} — Simple Streamer</title>
+
+  <!-- Primary Tab & Search Metadata -->
+  <title>${escapeAttr(pageTitle)}</title>
+  <meta name="title" content="${escapeAttr(pageTitle)}" />
+  <meta name="description" content="${escapeAttr(pageDesc)}" />
+  <link rel="canonical" href="${canonicalUrl}" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="googlebot" content="index, follow" />
+  <meta name="theme-color" content="#090a0f" />
+
+  <!-- Browser Favicon & Mobile Icons -->
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="alternate icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <!-- Open Graph / Social Sharing -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="${canonicalUrl}" />
+  <meta property="og:site_name" content="Simple Streamer" />
+  <meta property="og:title" content="${escapeAttr(pageTitle)}" />
+  <meta property="og:description" content="${escapeAttr(pageDesc)}" />
+  <meta property="og:image" content="https://simple-streamer.bdjlmn.com/icon.png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="Simple Streamer OBS Multi-Stream Plugin Logo" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:url" content="${canonicalUrl}" />
+  <meta name="twitter:title" content="${escapeAttr(pageTitle)}" />
+  <meta name="twitter:description" content="${escapeAttr(pageDesc)}" />
+  <meta name="twitter:image" content="https://simple-streamer.bdjlmn.com/icon.png" />
+
+  <!-- Google Search Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+${JSON.stringify(SCHEMA_JSON_LD, null, 2)}
+  </script>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   ${extraHead}
   <style>
@@ -281,7 +412,10 @@ function layout(title: string, bodyContent: string, extraHead: string = ''): str
 <body>
   <div class="container">
     <header>
-      <a href="/" class="logo">SimpleStreamer</a>
+      <a href="/" class="logo">
+        <img src="/icon.svg" width="28" height="28" alt="Simple Streamer Logo" style="border-radius: 6px; display: block;" />
+        SimpleStreamer
+      </a>
       <nav>
         <a href="/">Home</a>
         <a href="/login" id="navAccountLink" class="highlight-nav">Login</a>
@@ -342,7 +476,7 @@ function layout(title: string, bodyContent: string, extraHead: string = ''): str
 
 function setupHtml(): string {
   return layout(
-    'Set Up Your Broadcaster Account - Simple Streamer',
+    'Activate Founding Pass',
     `<div style="max-width: 480px; margin: 40px auto 80px;">
       <div class="card" style="padding: 36px 32px; border-top: 4px solid #fbbf24;">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -657,13 +791,16 @@ function setupHtml(): string {
           }
         };
       })();
-    </script>`
+    </script>`,
+    '',
+    'Activate your Simple Streamer Pro founding lifetime license and connect your OBS dock.',
+    '/setup'
   );
 }
 
 function loginHtml(): string {
   return layout(
-    'Account Sign In',
+    'Login',
     `<div style="max-width: 440px; margin: 40px auto 80px;">
       <div class="card" style="padding: 36px 32px; border-top: 4px solid var(--accent);">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -828,13 +965,16 @@ function loginHtml(): string {
           }
         };
       })();
-    </script>`
+    </script>`,
+    '',
+    'Log in to your Simple Streamer broadcaster account to manage paired devices and stream credentials.',
+    '/login'
   );
 }
 
 function accountHtml(): string {
   return layout(
-    'My Account & Devices',
+    'Broadcaster Account',
     `<!-- Loading Overlay -->
     <div id="accountLoading" style="text-align: center; padding: 80px 20px;">
       <div style="font-size: 36px; margin-bottom: 16px; animation: spin 1s linear infinite; display: inline-block;">⏳</div>
@@ -1506,13 +1646,16 @@ function accountHtml(): string {
 
         resolveSession();
       })();
-    </script>`
+    </script>`,
+    '',
+    'Manage paired OBS Studio instances, Pro licenses, and cloud remote connections.',
+    '/account'
   );
 }
 
 function homeHtml(): string {
   return layout(
-    'Set Title & Description Once, Stream Everywhere from OBS',
+    'Simple Streamer — Free Multi-Stream Plugin & Remote Dock for OBS Studio',
     `<div style="text-align: center; margin-bottom: 24px;">
       <div class="badge">OPEN SOURCE</div>
       <h1 style="font-size: 40px; margin-bottom: 18px; line-height: 1.2;">
@@ -1834,7 +1977,10 @@ function homeHtml(): string {
           if (icon) icon.innerText = '↓';
         }
       };
-    </script>`
+    </script>`,
+    '',
+    'Stream to YouTube, Facebook, Twitch & Kick simultaneously from OBS Studio with 0% extra CPU lag. Free, open-source multi-streaming with phone remote control.',
+    '/'
   );
 }
 
@@ -1938,7 +2084,10 @@ function privacyPolicyHtml(): string {
         Contact Email: <a href="mailto:Midimahdi6@gmail.com" style="color: #60a5fa;">Midimahdi6@gmail.com</a><br />
         Project Repository: <a href="https://github.com/midimahdi/simple-streamer" target="_blank" rel="noopener" style="color: #60a5fa;">github.com/midimahdi/simple-streamer</a>
       </p>
-    </div>`
+    </div>`,
+    '',
+    'Privacy Policy for Simple Streamer multi-stream plugin and cloud remote services.',
+    '/privacy'
   );
 }
 
@@ -2023,7 +2172,10 @@ function dataDeletionHtml(): string {
         Email: <a href="mailto:Midimahdi6@gmail.com" style="color: #60a5fa;">Midimahdi6@gmail.com</a><br />
         All data deletion inquiries are processed within 48 business hours.
       </p>
-    </div>`
+    </div>`,
+    '',
+    'Instructions on how to revoke permissions and delete data from Simple Streamer.',
+    '/data-deletion'
   );
 }
 
@@ -2070,6 +2222,9 @@ function termsHtml(): string {
     <h2>6. Contact</h2>
     <p>
       For legal or terms inquiries: <a href="mailto:Midimahdi6@gmail.com" style="color: #60a5fa;">Midimahdi6@gmail.com</a>
-    </p>`
+    </p>`,
+    '',
+    'Terms of Service for Simple Streamer software and Pro cloud services.',
+    '/terms'
   );
 }

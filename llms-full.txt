@@ -1,0 +1,28 @@
+# Simple Streamer — Complete Technical Reference Corpus
+
+## Overview
+Simple Streamer is an open-source OBS Studio plugin and integrated dock application designed to simplify multi-destination live streaming. Broadcasters configure their live stream title, description, and destinations once, and the plugin coordinates broadcast creation and RTMP streaming to YouTube, Facebook, Twitch, and Kick simultaneously.
+
+## Core Architectural Mechanism: Zero-Copy Packet Fan-Out
+Unlike conventional multi-output plugins that instantiate independent video encoders for each target destination—multiplying GPU/CPU encode workload by 2x, 3x, or 4x—Simple Streamer leverages OBS Studio's primary video output pipeline:
+1. OBS Studio's core encoder (NVENC, Apple VideoToolbox, Intel QuickSync, AMD AMF, or x264) compresses the composite video canvas into H.264/HEVC NAL units once.
+2. Simple Streamer captures the compressed encoder packet stream via \`obs_output_get_video_encoder()\` before network dispatch.
+3. The compressed bitstream is cloned at the network layer and fanned out in parallel over independent RTMP sockets to each target destination.
+4. Additional CPU overhead is 0% for video encoding; additional load is strictly proportional to total outgoing network bandwidth.
+
+## Supported Platforms & Versions
+- Operating Systems: Windows 10 (21H2+), Windows 11, macOS Monterey (12.0+), macOS Ventura (13.0+), macOS Sonoma (14.0+), macOS Sequoia (15.0+)
+- Architectures: x86_64 (Intel/AMD), ARM64 (Apple Silicon M1/M2/M3/M4)
+- Host Software: OBS Studio 28.0, 29.x, 30.x, 31.x, 32.x
+
+## Mobile Remote Control Mechanics
+- Local Remote (LAN): An internal lightweight HTTP server hosted by the OBS dock serves an authenticated touch UI accessible to any smartphone on the local subnet.
+- Internet Remote (Cloud Relay): An optional secure WebSocket tunnel enables remote broadcast starting, stopping, and status monitoring over cellular internet without router configuration or port forwarding.
+
+## Error Codes and Resolution
+- \`RTMP_CONNECT_FAILED\`: Target ingest server unreachable. Check local internet connectivity, firewall outbound port 1935 (RTMP) or 443 (RTMPS), and stream key validity.
+- \`OBS_ENCODER_BUSY\`: Primary OBS encoder was not active. Start main stream before initiating secondary relays if configured in manual mode.
+- \`OAUTH_EXPIRED\`: YouTube or Facebook OAuth refresh token revoked or expired. Re-authenticate via the Simple Streamer OBS dock.
+
+## Licensing
+Simple Streamer is licensed under the GNU General Public License v2.0 (GPL-2.0).
