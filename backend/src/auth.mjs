@@ -9,9 +9,7 @@ export const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uqxlgyhmbhzeyfc
 export const SUPABASE_ANON_KEY =
   process.env.SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxeGxneWhtYmh6ZXlmY2d4eGppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2ODYxNzgsImV4cCI6MjExMDI2MjE3OH0.nr6UxjL7D_EhSfzHir_O4602yEE8aks-S6Wj2b7hR8Q';
-export const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxeGxneWhtYmh6ZXlmY2d4eGppIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5NDY4NjE3OCwiZXhwIjoyMTEwMjYyMTc4fQ.Fz_SxexMF9k3CrgP3wr_SzJFBRUH63G_r-BGSJv48dw';
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export const PRO_REQUIRED_ERROR = {
   error: 'PRO_REQUIRED',
