@@ -784,6 +784,18 @@
       font-size: 13px;
       outline: none;
       width: 100%;
+      unicode-bidi: plaintext;
+      text-align: start;
+    }
+
+    [dir="auto"] {
+      unicode-bidi: plaintext;
+      text-align: start;
+    }
+
+    [dir="rtl"] {
+      direction: rtl;
+      text-align: right;
     }
 
     .modal-btn-row {
@@ -1181,8 +1193,8 @@
     </div>
     <div class="title-display-wrap">
       <div style="flex: 1; min-width: 0;">
-        <div id="streamTitleDisplay" class="stream-title-text">Connecting...</div>
-        <div id="streamDescDisplay" class="stream-desc-text"></div>
+        <div id="streamTitleDisplay" class="stream-title-text" dir="auto">Connecting...</div>
+        <div id="streamDescDisplay" class="stream-desc-text" dir="auto"></div>
       </div>
     </div>
 
@@ -1254,9 +1266,9 @@
     <div class="modal-card">
       <div class="modal-heading" data-i18n="editDetailsTitle">Edit Broadcast Details</div>
       <label data-i18n="broadcastTitleLabel" style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px; display: block;">BROADCAST TITLE</label>
-      <input type="text" id="modalTitleInput" class="modal-input" placeholder="e.g. Friday Sermon or Weekly Lecture" maxlength="120" />
+      <input type="text" id="modalTitleInput" dir="auto" class="modal-input" placeholder="e.g. Friday Sermon or Weekly Lecture" maxlength="120" />
       <label data-i18n="broadcastDescLabel" style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-top: 10px; margin-bottom: 4px; display: block;">DESCRIPTION</label>
-      <textarea id="modalDescInput" class="modal-input" style="height: 64px; resize: none; font-family: inherit; font-size: 12px; line-height: 1.4;" placeholder="e.g. Weekly sermon transmitted from the main prayer hall..."></textarea>
+      <textarea id="modalDescInput" dir="auto" class="modal-input" style="height: 64px; resize: none; font-family: inherit; font-size: 12px; line-height: 1.4;" placeholder="e.g. Weekly sermon transmitted from the main prayer hall..."></textarea>
       <div class="modal-btn-row">
         <button id="btnCancelTitleModal" class="btn-modal btn-modal-cancel" data-i18n="btnCancel">Cancel</button>
         <button id="btnSaveTitleModal" class="btn-modal btn-modal-confirm-blue" data-i18n="btnSaveDetails">Save Details</button>
@@ -2402,11 +2414,31 @@
       renderSceneTiles();
     }
 
+    function updateRemoteDirection(input) {
+      if (!input) return;
+      const val = input.value ? input.value.trim() : '';
+      if (!val) {
+        input.removeAttribute('dir');
+        return;
+      }
+      const isRtl = /^[\s\d\p{P}]*[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/u.test(val);
+      input.dir = isRtl ? 'rtl' : 'ltr';
+    }
+
+    if (el.modalTitleInput) {
+      el.modalTitleInput.addEventListener('input', () => updateRemoteDirection(el.modalTitleInput));
+    }
+    if (el.modalDescInput) {
+      el.modalDescInput.addEventListener('input', () => updateRemoteDirection(el.modalDescInput));
+    }
+
     // --- 4. Title & Setup Management ---
     el.btnEditTitle.onclick = () => {
       triggerFeedback(el.btnEditTitle, 'tap');
       el.modalTitleInput.value = state.title || '';
       if (el.modalDescInput) el.modalDescInput.value = state.description || '';
+      updateRemoteDirection(el.modalTitleInput);
+      if (el.modalDescInput) updateRemoteDirection(el.modalDescInput);
       el.editTitleModal.style.display = 'flex';
       el.modalTitleInput.focus();
     };

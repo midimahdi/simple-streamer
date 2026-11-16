@@ -416,6 +416,17 @@ select, input[type="text"], input[type="password"], textarea {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+input[dir="auto"], textarea[dir="auto"], [dir="auto"] {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+input[dir="rtl"], textarea[dir="rtl"], [dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: embed;
+}
+
 textarea {
   resize: vertical;
   min-height: 64px;

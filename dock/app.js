@@ -403,6 +403,24 @@ function updateTitleCounter() {
     el.titleCounter.style.color = 'var(--text-muted)';
     el.titleCounter.style.fontWeight = 'normal';
   }
+  updateTextDirection(el.lessonTitle);
+}
+
+/**
+ * -------------------------------------------------------------
+ * Dynamic Bidirectional (RTL / Arabic) Text Direction Handler
+ * -------------------------------------------------------------
+ */
+function updateTextDirection(input) {
+  if (!input) return;
+  const val = input.value ? input.value.trim() : '';
+  if (!val) {
+    input.removeAttribute('dir');
+    return;
+  }
+  // Check if first strongly directional character is Arabic / RTL
+  const isRtl = /^[\s\d\p{P}]*[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/u.test(val);
+  input.dir = isRtl ? 'rtl' : 'ltr';
 }
 
 /**
@@ -1136,10 +1154,12 @@ function handleTemplateSelect(e) {
     if (el.lessonTitle) {
       el.lessonTitle.value = interpolatedTitle;
       localStorage.setItem('dock_lessonTitle', interpolatedTitle);
+      updateTextDirection(el.lessonTitle);
     }
     if (el.lessonDescription) {
       el.lessonDescription.value = interpolatedDesc;
       localStorage.setItem('dock_lessonDescription', interpolatedDesc);
+      updateTextDirection(el.lessonDescription);
     }
     updateTitleCounter();
     syncMetadataToBridgeAndRemote(interpolatedTitle, interpolatedDesc);
@@ -4647,12 +4667,14 @@ function initEvents() {
     if (!input) return;
     const saved = localStorage.getItem('dock_' + id);
     if (saved && !saved.includes('[object')) input.value = saved;
+    updateTextDirection(input);
     if (id === 'lessonTitle') updateTitleCounter();
     input.addEventListener('input', () => {
       const val = input.value.trim();
       if (!val.includes('[object')) {
         localStorage.setItem('dock_' + id, val);
       }
+      updateTextDirection(input);
       clearTimeout(syncDebounceTimer);
       syncDebounceTimer = setTimeout(() => syncMetadataToBridgeAndRemote(), 200);
       if (id === 'lessonTitle') updateTitleCounter();
@@ -4660,10 +4682,12 @@ function initEvents() {
       checkLiveMetadataDirty();
     });
     input.addEventListener('change', () => {
+      updateTextDirection(input);
       syncMetadataToBridgeAndRemote();
       checkLiveMetadataDirty();
     });
     input.addEventListener('blur', () => {
+      updateTextDirection(input);
       syncMetadataToBridgeAndRemote();
       checkLiveMetadataDirty();
     });
@@ -4684,10 +4708,12 @@ function initEvents() {
         titleEl.value = cfg.title;
         localStorage.setItem('dock_lessonTitle', cfg.title);
         updateTitleCounter();
+        updateTextDirection(titleEl);
       }
       if (descEl && (!descEl.value || descEl.value.includes('[object')) && cfg.description !== undefined && !cfg.description.includes('[object')) {
         descEl.value = cfg.description;
         localStorage.setItem('dock_lessonDescription', cfg.description);
+        updateTextDirection(descEl);
       }
     })
     .catch(() => {});
@@ -4712,10 +4738,12 @@ function initEvents() {
           titleEl.value = cfg.title;
           localStorage.setItem('dock_lessonTitle', cfg.title);
           updateTitleCounter();
+          updateTextDirection(titleEl);
         }
         if (!isTypingDesc && descEl && cfg.description !== undefined && !cfg.description.includes('[object') && cfg.description !== descEl.value) {
           descEl.value = cfg.description;
           localStorage.setItem('dock_lessonDescription', cfg.description);
+          updateTextDirection(descEl);
         }
       })
       .catch(() => {});
