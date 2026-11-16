@@ -32,6 +32,8 @@ const state = {
   isRecording: false,
   isPreparing: false,
   isEnding: false,
+  isManagedStream: false,
+  isExternalStream: false,
   ephemeralThumbnailBase64: null, // Strictly in-memory, never saved to localStorage (cleared on Go Live)
   timerInterval: null,
   metricsInterval: null,
@@ -187,6 +189,15 @@ function logDiag(msg) {
  * Update Main Action Button state based on OBS connection & system readiness
  */
 function updateActionBtnState() {
+  if (state.isExternalStream) {
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary external-live';
+    el.actionBtnText.textContent = t('obsStreamingExternal') || '● OBS STREAMING (EXTERNAL)';
+    el.actionBtn.title = t('externalStreamAlertMsg') || 'OBS is currently broadcasting via external controls or another plugin.';
+    return;
+  }
+  el.actionBtn.title = '';
+
   if (state.isStreaming) {
     el.actionBtn.disabled = false;
     el.actionBtn.className = 'btn-primary stop';
@@ -3521,9 +3532,14 @@ async function handleGoLive() {
 
   try {
     logDiag('Starting OBS Stream...');
+    sessionStorage.setItem('simple_streamer_stream_managed', 'true');
+    state.isManagedStream = true;
+    state.isExternalStream = false;
     await state.obs.call('StartStream');
     setLiveUI(true);
   } catch (err) {
+    sessionStorage.removeItem('simple_streamer_stream_managed');
+    state.isManagedStream = false;
     state.isPreparing = false;
     logDiag(`OBS Start failed: ${err.message}`);
     if (state.obs && state.obs.isConnected) {
@@ -3536,10 +3552,50 @@ async function handleGoLive() {
 }
 
 /**
+ * Transition UI for broadcasts initiated outside Simple Streamer
+ */
+function setExternalLiveUI(isLive) {
+  state.isExternalStream = isLive;
+  state.isStreaming = false;
+  state.isPreparing = false;
+  state.isEnding = false;
+
+  if (isLive) {
+    setStatus(t('obsStreamingExternal') || '● STREAMING (EXTERNAL)', 'amber');
+    if (el.liveContainer) el.liveContainer.style.display = 'none';
+    if (el.inputGroup) el.inputGroup.style.display = 'block';
+    if (el.settingsLiveBar) el.settingsLiveBar.style.display = 'none';
+    if (el.destLockedNotice) el.destLockedNotice.style.display = 'none';
+    if (el.liveMetadataUpdateBar) el.liveMetadataUpdateBar.style.display = 'none';
+
+    el.actionBtn.disabled = true;
+    el.actionBtn.className = 'btn-primary external-live';
+    el.actionBtnText.textContent = t('obsStreamingExternal') || '● OBS STREAMING (EXTERNAL)';
+    el.actionBtn.title = t('externalStreamAlertMsg') || 'OBS is currently broadcasting via external controls or another plugin.';
+  } else {
+    setStatus('● CONNECTED', 'connected');
+    el.actionBtn.title = '';
+    updateActionBtnState();
+  }
+
+  // Notify mobile remote of external stream state change
+  if (state.obs && state.obs.isConnected) {
+    state.obs.call('BroadcastCustomEvent', {
+      eventData: {
+        action: 'STREAM_STATE_CHANGED',
+        isLive: state.isStreaming,
+        isExternalStream: state.isExternalStream,
+      },
+    }).catch(() => {});
+  }
+}
+
+/**
  * Transition UI between Standby and Live states
  */
 function setLiveUI(isLive) {
   state.isStreaming = isLive;
+  state.isExternalStream = false;
   state.isPreparing = false;
   state.isEnding = false;
 
@@ -4017,6 +4073,8 @@ async function reconcileActiveBroadcastMetadata() {
 async function handleEndStream() {
   if (state.isEnding) return;
   state.isEnding = true;
+  sessionStorage.removeItem('simple_streamer_stream_managed');
+  state.isManagedStream = false;
 
   el.actionBtn.disabled = true;
   el.actionBtnText.textContent = 'ENDING STREAM...';
@@ -4095,9 +4153,22 @@ async function connectObs(isRetry = false) {
 
     const streamStatus = await state.obs.call('GetStreamStatus');
     if (streamStatus.outputActive) {
-      logDiag('OBS is currently streaming.');
-      setLiveUI(true);
+      const isManaged = sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
+      if (isManaged) {
+        logDiag('OBS is currently streaming (Managed Simple Streamer broadcast).');
+        state.isManagedStream = true;
+        state.isExternalStream = false;
+        setLiveUI(true);
+      } else {
+        logDiag('OBS is currently streaming (External broadcast detected).');
+        state.isManagedStream = false;
+        state.isExternalStream = true;
+        setExternalLiveUI(true);
+      }
     } else {
+      sessionStorage.removeItem('simple_streamer_stream_managed');
+      state.isManagedStream = false;
+      state.isExternalStream = false;
       // If OBS was closed mid-stream or previous session had pending backup, restore native settings
       restoreOriginalStreamServiceSettings();
     }
@@ -4249,6 +4320,10 @@ function initEvents() {
 
   // Main Broadcast Action Button
   el.actionBtn.onclick = () => {
+    if (state.isExternalStream) {
+      showAlert(t('externalStreamAlertTitle') || 'EXTERNAL STREAM ACTIVE', t('externalStreamAlertMsg') || 'OBS is currently broadcasting via external controls or another plugin.');
+      return;
+    }
     if (state.isStreaming) {
       if (confirm(t('confirmEndStream'))) {
         handleEndStream();
@@ -4419,25 +4494,43 @@ function initEvents() {
 
   // OBS WebSocket Events
   state.obs.on('StreamStateChanged', (data) => {
-    if (data.outputActive && !state.isStreaming) {
-      setLiveUI(true);
-    } else if (!data.outputActive && state.isStreaming) {
-      // If stream was stopped via OBS native button or external hotkey,
-      // trigger clean teardown across remote cloud platforms
-      if (state.activeBroadcast?.destinations?.length > 0) {
-        fetch(`${state.config.backendUrl}/end-live`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
-          },
-          body: JSON.stringify({
-            destinations: state.activeBroadcast.destinations,
-          }),
-        }).catch(() => {});
+    if (data.outputActive) {
+      const isManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
+      if (isManaged) {
+        state.isManagedStream = true;
+        state.isExternalStream = false;
+        if (!state.isStreaming) setLiveUI(true);
+      } else {
+        state.isManagedStream = false;
+        state.isExternalStream = true;
+        setExternalLiveUI(true);
       }
-      setLiveUI(false);
-      setTimeout(restoreOriginalStreamServiceSettings, 1000);
+    } else {
+      const wasManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true' || state.isStreaming;
+      sessionStorage.removeItem('simple_streamer_stream_managed');
+      state.isManagedStream = false;
+
+      if (wasManaged) {
+        // If stream was stopped via OBS native button or external hotkey,
+        // trigger clean teardown across remote cloud platforms
+        if (state.activeBroadcast?.destinations?.length > 0) {
+          fetch(`${state.config.backendUrl}/end-live`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
+            },
+            body: JSON.stringify({
+              destinations: state.activeBroadcast.destinations,
+            }),
+          }).catch(() => {});
+        }
+        setLiveUI(false);
+        setTimeout(restoreOriginalStreamServiceSettings, 1000);
+      } else if (state.isExternalStream) {
+        setExternalLiveUI(false);
+      }
+      state.isExternalStream = false;
     }
   });
 
@@ -4475,6 +4568,7 @@ function initEvents() {
             enabled: d.enabled,
           })),
           isLive: state.isStreaming,
+          isExternalStream: state.isExternalStream,
           isPreparing: state.isPreparing,
           pin: state.sessionPin,
         },

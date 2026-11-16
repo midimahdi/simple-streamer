@@ -158,6 +158,12 @@ body {
   animation: pulse 1s infinite alternate;
 }
 
+.badge.amber, .badge.external {
+  background: #78350f;
+  color: #fde68a;
+  border-color: #b45309;
+}
+
 .badge.live {
   background: #991b1b;
   color: #fecaca;
@@ -888,6 +894,15 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:f
 .btn-primary.stop:hover {
   background: linear-gradient(180deg, #f87171 0%, #ef4444 100%);
   box-shadow: 0 6px 18px rgba(239, 68, 68, 0.5);
+}
+
+.btn-primary.external-live {
+  background: linear-gradient(180deg, #b45309 0%, #78350f 100%);
+  border: 1px solid #d97706;
+  color: #fef3c7;
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.25);
+  cursor: not-allowed;
+  opacity: 0.9 !important;
 }
 
 /* Animations */

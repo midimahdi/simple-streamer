@@ -56,6 +56,10 @@ export const I18N = {
     connectingObs: '⏳ CONNECTING TO OBS...',
     selectDestFirst: 'SELECT DESTINATION FIRST',
     destError: 'DESTINATION ERROR - CHECK SETTINGS',
+    obsStreamingExternal: '● OBS STREAMING (EXTERNAL)',
+    externalStreamAlertTitle: 'EXTERNAL STREAM ACTIVE',
+    externalStreamAlertMsg: 'OBS is currently broadcasting via external controls or another plugin.',
+    remoteExternalLive: 'STREAMING (EXTERNAL)',
 
     // Settings Drawer - Account
     accountPassTitle: 'ACCOUNT & LICENSE',
@@ -260,6 +264,10 @@ export const I18N = {
     connectingObs: '⏳ جاري الاتصال بـ OBS...',
     selectDestFirst: 'حدد وجهة البث أولاً',
     destError: 'خطأ في وجهات البث - تحقق من الإعدادات',
+    obsStreamingExternal: '● بث نشط عبر OBS (خارجي)',
+    externalStreamAlertTitle: 'بث خارجي قيد التشغيل',
+    externalStreamAlertMsg: 'OBS يقوم بالبث حالياً عبر إضافة أو مفاتيح اختصار خارجية.',
+    remoteExternalLive: 'بث خارجي نشط',
 
     // Settings Drawer - Account
     accountPassTitle: 'الحساب والترخيص',

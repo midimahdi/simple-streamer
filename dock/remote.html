@@ -213,6 +213,13 @@
       font-weight: 900;
     }
 
+    .hud-badge-left.external {
+      background: rgba(245, 158, 11, 0.95);
+      color: #000;
+      border-color: rgba(245, 158, 11, 0.8);
+      font-weight: 900;
+    }
+
     .monitor-container.staged {
       box-shadow: inset 0 0 0 2px var(--accent-amber);
     }
@@ -659,6 +666,22 @@
     .slider-track.live {
       background: rgba(239, 68, 68, 0.1);
       border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .slider-track.disabled {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.4);
+      cursor: not-allowed;
+    }
+
+    .slider-track.disabled .slider-label {
+      color: var(--accent-amber);
+    }
+
+    .slider-track.disabled .slider-thumb {
+      background: #78350f;
+      color: #fde68a;
+      cursor: not-allowed;
     }
 
     .slider-fill {
@@ -1283,6 +1306,8 @@
       isConnected: false,
       isIdentified: false,
       isStreaming: false,
+      isExternalStream: false,
+      isManagedStream: false,
       isPreparing: false,
       reqId: 1,
       pendingRequests: new Map(),
@@ -1387,7 +1412,10 @@
       setConnectionStatus(state.isConnected ? 'connected' : (state.ws ? 'connecting' : 'offline'));
       updateSceneUi();
       updateMuteButtonUi();
-      if (state.isStreaming) {
+      if (state.isExternalStream) {
+        if (el.sliderLabel) el.sliderLabel.textContent = t('remoteExternalLive') || 'OBS STREAMING (EXTERNAL)';
+        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteExternalLive') || 'STREAMING (EXTERNAL)';
+      } else if (state.isStreaming) {
         if (el.sliderLabel) el.sliderLabel.textContent = t('slideToStop');
         if (el.badgeStatus) el.badgeStatus.textContent = t('remoteLive');
       } else {
@@ -1813,7 +1841,18 @@
 
     function handleObsEvent(d) {
       if (d.eventType === 'StreamStateChanged') {
-        setStreamLiveState(d.eventData.outputActive);
+        if (d.eventData.outputActive) {
+          if (state.isManagedStream) {
+            setStreamLiveState(true);
+          } else {
+            setStreamExternalLiveState(true);
+          }
+        } else {
+          state.isManagedStream = false;
+          state.isExternalStream = false;
+          setStreamLiveState(false);
+          setStreamExternalLiveState(false);
+        }
       } else if (d.eventType === 'CurrentProgramSceneChanged') {
         const newScene = d.eventData.sceneName || d.eventData.currentProgramSceneName;
         state.currentScene = newScene;
@@ -1851,6 +1890,15 @@
           resetSlider();
           triggerFeedback(el.sliderTrack, 'alert');
           alert('Stream Failed: ' + (data.error || 'Could not start broadcast in OBS.'));
+        } else if (data.action === 'STREAM_STATE_CHANGED') {
+          if (data.isExternalStream) {
+            setStreamExternalLiveState(true);
+          } else if (data.isLive) {
+            setStreamLiveState(true);
+          } else {
+            setStreamLiveState(false);
+            setStreamExternalLiveState(false);
+          }
         } else if (data.action === 'SYNC_RESPONSE' || data.action === 'METADATA_CHANGED') {
           if (data.title !== undefined && data.title) {
             state.title = data.title;
@@ -1875,7 +1923,11 @@
             }
             renderDestinationsPills(state.destinations);
           }
-          if (data.isLive !== undefined) setStreamLiveState(data.isLive);
+          if (data.isExternalStream) {
+            setStreamExternalLiveState(true);
+          } else if (data.isLive !== undefined) {
+            setStreamLiveState(data.isLive);
+          }
         }
       }
     }
@@ -2391,8 +2443,8 @@
     function setConnectionStatus(type) {
       el.connDot.className = 'conn-dot';
       if (type === 'connected') {
-        el.connDot.classList.add(state.isStreaming ? 'live' : 'connected');
-        el.connText.textContent = state.isStreaming ? t('remoteLive') : t('remoteConnected');
+        el.connDot.classList.add(state.isStreaming ? 'live' : (state.isExternalStream ? 'amber' : 'connected'));
+        el.connText.textContent = state.isStreaming ? t('remoteLive') : (state.isExternalStream ? (t('remoteExternalLive') || 'EXTERNAL LIVE') : t('remoteConnected'));
       } else if (type === 'connecting') {
         el.connText.textContent = t('remoteConnecting');
       } else {
@@ -2402,11 +2454,17 @@
     }
 
     function setStreamLiveState(isLive) {
+      if (state.isExternalStream && isLive) {
+        setStreamExternalLiveState(true);
+        return;
+      }
+      state.isExternalStream = false;
       const changed = state.isStreaming !== isLive;
       state.isStreaming = isLive;
       state.isPreparing = false;
       if (state.liveSafetyTimer) clearTimeout(state.liveSafetyTimer);
 
+      el.sliderTrack.classList.remove('disabled');
       if (isLive) {
         el.videoBadge.className = 'hud-badge-left live';
         el.badgeStatus.textContent = t('remoteLive');
@@ -2425,13 +2483,42 @@
       if (changed) startPreviewLoop();
     }
 
+    function setStreamExternalLiveState(isExternal) {
+      state.isExternalStream = isExternal;
+      state.isPreparing = false;
+      if (state.liveSafetyTimer) clearTimeout(state.liveSafetyTimer);
+
+      if (isExternal) {
+        state.isStreaming = false;
+        el.videoBadge.className = 'hud-badge-left external';
+        el.badgeStatus.textContent = t('remoteExternalLive') || 'STREAMING (EXTERNAL)';
+        el.sliderTrack.classList.remove('live');
+        el.sliderTrack.classList.add('disabled');
+        el.sliderLabel.textContent = t('remoteExternalLive') || 'OBS STREAMING (EXTERNAL)';
+      } else {
+        el.sliderTrack.classList.remove('disabled');
+        setStreamLiveState(false);
+      }
+      setConnectionStatus('connected');
+      resetSlider();
+    }
+
     // Stream Telemetry Polling
     async function pollStreamStats() {
       if (!state.isIdentified) return;
       try {
         const status = await callWs('GetStreamStatus');
         if (status) {
-          setStreamLiveState(status.outputActive);
+          if (status.outputActive) {
+            if (state.isExternalStream) {
+              setStreamExternalLiveState(true);
+            } else {
+              setStreamLiveState(true);
+            }
+          } else {
+            state.isExternalStream = false;
+            setStreamLiveState(false);
+          }
           if (status.outputActive) {
             const kbps = Math.round((status.outputBytes * 8) / (status.outputDuration / 1000) / 1024) || 0;
             el.metricBitrate.textContent = `${kbps} kbps`;
@@ -2465,6 +2552,10 @@
       const fill = el.sliderFill;
 
       function onTouchStart(e) {
+        if (state.isExternalStream) {
+          triggerFeedback(el.sliderTrack, 'alert');
+          return;
+        }
         state.sliderDragging = true;
         state.sliderStartX = (e.touches ? e.touches[0].clientX : e.clientX);
         state.sliderMaxDrag = track.clientWidth - thumb.clientWidth - 8;
@@ -2526,12 +2617,18 @@
       el.sliderFill.style.transition = 'width 0.25s ease-out';
       el.sliderThumb.style.transform = 'translateX(0px)';
       el.sliderFill.style.width = '0px';
-      el.sliderLabel.textContent = state.isStreaming ? t('slideToStop') : t('slideToLive');
+      if (state.isExternalStream) {
+        el.sliderLabel.textContent = t('remoteExternalLive') || 'OBS STREAMING (EXTERNAL)';
+      } else {
+        el.sliderLabel.textContent = state.isStreaming ? t('slideToStop') : t('slideToLive');
+      }
       el.sliderLabel.style.opacity = '1';
       state.sliderCurrentX = 0;
     }
 
     async function triggerRemoteGoLive() {
+      state.isManagedStream = true;
+      state.isExternalStream = false;
       const activeDests = (state.destinations || []).filter(d => d.enabled !== false);
       if (state.destinations && state.destinations.length > 0 && activeDests.length === 0) {
         alert('Please enable at least one target platform before going live.');
