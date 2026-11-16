@@ -783,8 +783,38 @@ let accountAuthPollTimer = null;
 
 function startAccountSignInFlow() {
   const sessionId = generateSecureSessionId('session_user');
-  openExternalUrl(`https://simple-streamer.bdjlmn.com/login?session=${sessionId}`);
+  const loginUrl = `https://simple-streamer.bdjlmn.com/login?session=${sessionId}`;
+  openExternalUrl(loginUrl);
   logDiag('Waiting for account authentication in browser...');
+  showAlert(
+    'SIGNING IN',
+    'Opening in your default browser... If your system opened inside OBS, simply paste the link into Chrome, Firefox, or Safari.',
+    [
+      {
+        label: '📋 COPY LINK',
+        onClick: () => {
+          navigator.clipboard.writeText(loginUrl);
+          showAlert('COPIED!', 'Link copied to clipboard. Paste into your browser to log in.', [], 'success');
+          setTimeout(() => {
+            if (accountAuthPollTimer) {
+              showAlert('SIGNING IN', 'Waiting for authorization in browser...', [
+                { label: '📋 COPY LINK', onClick: () => navigator.clipboard.writeText(loginUrl) },
+                { label: 'CANCEL', onClick: () => { clearInterval(accountAuthPollTimer); accountAuthPollTimer = null; clearAlert(); } }
+              ]);
+            }
+          }, 1500);
+        }
+      },
+      {
+        label: 'CANCEL',
+        onClick: () => {
+          if (accountAuthPollTimer) clearInterval(accountAuthPollTimer);
+          accountAuthPollTimer = null;
+          clearAlert();
+        }
+      }
+    ]
+  );
   startAccountAuthPoll(sessionId);
 }
 
@@ -2061,13 +2091,60 @@ function hideDiscovery() {
 }
 
 /**
- * Open external URL via local bridge or window.open
+ * Open external URL in user's default browser (cross-platform: Windows, macOS, Linux)
+ * 1. Automatically copies link to clipboard as a universal fail-safe for OBS docks
+ * 2. Asynchronously dispatches to local desktop bridge (127.0.0.1:45455 / localhost:45455)
+ *    to trigger OS default browser launcher:
+ *    - Windows: ProcessStartInfo (UseShellExecute = true) / Start-Process
+ *    - macOS: /usr/bin/open
+ *    - Linux: xdg-open
+ * 3. Falls back to window.open only if bridge is unreachable
  */
 async function openExternalUrl(url) {
+  if (!url) return;
+
+  // 1. Instant Clipboard Copy (Fail-safe for OBS Browser docks)
   try {
-    await fetch(`http://127.0.0.1:45455/open?url=${encodeURIComponent(url)}`, { mode: 'cors' });
-  } catch (_) {
-    window.open(url, '_blank');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+  } catch (_) {}
+
+  // 2. Dispatch to Local Desktop Bridge across loopback addresses
+  const bridgeEndpoints = [
+    `http://127.0.0.1:45455/open?url=${encodeURIComponent(url)}`,
+    `http://localhost:45455/open?url=${encodeURIComponent(url)}`,
+  ];
+
+  let bridgeDispatched = false;
+
+  // A. Fire Image beacons (often allowed across mixed-content boundaries without blocking)
+  try {
+    const beacon = new Image();
+    beacon.src = `${bridgeEndpoints[0]}&_b=${Date.now()}`;
+  } catch (_) {}
+
+  // B. Dispatch fetch with no-cors to avoid CORS preflight rejection
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1200);
+
+    const promises = bridgeEndpoints.map((ep) =>
+      fetch(ep, { mode: 'no-cors', cache: 'no-store', signal: controller.signal })
+    );
+
+    const res = await Promise.any(promises).catch(() => null);
+    clearTimeout(timer);
+    if (res) {
+      bridgeDispatched = true;
+    }
+  } catch (_) {}
+
+  // 3. Fallback: If not confirmed dispatched by bridge, use window.open
+  if (!bridgeDispatched) {
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (_) {}
   }
 }
 
@@ -2571,13 +2648,33 @@ function promptAddYouTube() {
 
 async function startYouTubeOAuthFlow() {
   prepareAuthSessions();
-  await openExternalUrl(state.ytAuthUrl);
+  const authUrl = state.ytAuthUrl;
+  await openExternalUrl(authUrl);
   logDiag('Waiting for YouTube authorization in browser...');
   startYouTubePoll(state.ytSessionId);
   showAlert(
     'CONNECTING YOUTUBE',
-    'Opened Google sign-in in your browser. Select your YouTube channel to link your broadcast directly.',
+    'Opening Google sign-in in your default browser... Select your YouTube channel to link 1-click live broadcasts.<br><span style="color:#94a3b8;font-size:11px;display:block;margin-top:4px;">If your system opened inside OBS or a popup was blocked, click [📋 COPY LINK] and paste into your browser.</span>',
     [
+      {
+        label: '📋 COPY LINK',
+        onClick: () => {
+          navigator.clipboard.writeText(authUrl);
+          showAlert('COPIED!', 'Google authorization link copied to clipboard. Paste into Chrome, Firefox, or Safari.', [], 'success');
+          setTimeout(() => {
+            showAlert(
+              'CONNECTING YOUTUBE',
+              'Waiting for Google authorization in browser...',
+              [
+                { label: '📋 COPY LINK', onClick: () => navigator.clipboard.writeText(authUrl) },
+                { label: 'USE STREAM KEY INSTEAD', onClick: () => promptManualYouTubeKey(true) },
+                { label: 'CANCEL', onClick: () => clearAlert() },
+              ],
+              'info'
+            );
+          }, 1500);
+        }
+      },
       { label: 'USE STREAM KEY INSTEAD', onClick: () => promptManualYouTubeKey(true) },
       { label: 'CANCEL', onClick: () => clearAlert() },
     ],
@@ -2693,13 +2790,33 @@ function promptAddFacebook() {
 
 async function startFacebookOAuthFlow() {
   prepareAuthSessions();
-  await openExternalUrl(state.fbAuthUrl);
+  const authUrl = state.fbAuthUrl;
+  await openExternalUrl(authUrl);
   logDiag('Waiting for Facebook authorization in browser...');
   startFacebookPoll(state.fbSessionId);
   showAlert(
     'CONNECTING FACEBOOK',
-    'Opened Facebook sign-in in your browser. Select your Facebook Page to link 1-click live broadcasts.',
+    'Opening Facebook sign-in in your default browser... Select your Facebook Page to link 1-click live broadcasts.<br><span style="color:#94a3b8;font-size:11px;display:block;margin-top:4px;">If your system opened inside OBS or a popup was blocked, click [📋 COPY LINK] and paste into your browser.</span>',
     [
+      {
+        label: '📋 COPY LINK',
+        onClick: () => {
+          navigator.clipboard.writeText(authUrl);
+          showAlert('COPIED!', 'Facebook authorization link copied to clipboard. Paste into Chrome, Firefox, or Safari.', [], 'success');
+          setTimeout(() => {
+            showAlert(
+              'CONNECTING FACEBOOK',
+              'Waiting for Facebook authorization in browser...',
+              [
+                { label: '📋 COPY LINK', onClick: () => navigator.clipboard.writeText(authUrl) },
+                { label: 'USE STREAM KEY INSTEAD', onClick: () => promptManualFacebookKey(true) },
+                { label: 'CANCEL', onClick: () => clearAlert() },
+              ],
+              'info'
+            );
+          }, 1500);
+        }
+      },
       { label: 'USE STREAM KEY INSTEAD', onClick: () => promptManualFacebookKey(true) },
       { label: 'CANCEL', onClick: () => clearAlert() },
     ],
@@ -4507,8 +4624,24 @@ function initEvents() {
     el.btnAddTwitch.onclick = async () => {
       collapseAddPlatforms();
       const sessionId = generateSecureSessionId('session_tw');
-      await openExternalUrl(`${state.config.backendUrl}/auth/twitch/start?session=${sessionId}`);
+      const twitchUrl = `${state.config.backendUrl}/auth/twitch/start?session=${sessionId}`;
+      await openExternalUrl(twitchUrl);
       logDiag('Waiting for Twitch authorization in browser...');
+      showAlert(
+        'CONNECTING TWITCH',
+        'Opening Twitch sign-in in your default browser...<br><span style="color:#94a3b8;font-size:11px;display:block;margin-top:4px;">If your system opened inside OBS or a popup was blocked, click [📋 COPY LINK] and paste into your browser.</span>',
+        [
+          {
+            label: '📋 COPY LINK',
+            onClick: () => {
+              navigator.clipboard.writeText(twitchUrl);
+              showAlert('COPIED!', 'Twitch authorization link copied to clipboard. Paste into Chrome, Firefox, or Safari.', [], 'success');
+            }
+          },
+          { label: 'CANCEL', onClick: () => clearAlert() }
+        ],
+        'info'
+      );
       startTwitchPoll(sessionId);
     };
   }
@@ -4518,8 +4651,24 @@ function initEvents() {
     el.btnAddKick.onclick = async () => {
       collapseAddPlatforms();
       const sessionId = generateSecureSessionId('session_kc');
-      await openExternalUrl(`${state.config.backendUrl}/auth/kick/start?session=${sessionId}`);
+      const kickUrl = `${state.config.backendUrl}/auth/kick/start?session=${sessionId}`;
+      await openExternalUrl(kickUrl);
       logDiag('Waiting for Kick authorization in browser...');
+      showAlert(
+        'CONNECTING KICK',
+        'Opening Kick sign-in in your default browser...<br><span style="color:#94a3b8;font-size:11px;display:block;margin-top:4px;">If your system opened inside OBS or a popup was blocked, click [📋 COPY LINK] and paste into your browser.</span>',
+        [
+          {
+            label: '📋 COPY LINK',
+            onClick: () => {
+              navigator.clipboard.writeText(kickUrl);
+              showAlert('COPIED!', 'Kick authorization link copied to clipboard. Paste into Chrome, Firefox, or Safari.', [], 'success');
+            }
+          },
+          { label: 'CANCEL', onClick: () => clearAlert() }
+        ],
+        'info'
+      );
       startKickPoll(sessionId);
     };
   }

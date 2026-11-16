@@ -294,9 +294,16 @@ while ($listener.IsListening) {
             $targetUrl = $req.QueryString["url"]
             if ($targetUrl) {
                 try {
-                    Start-Process $targetUrl
+                    $psi = New-Object System.Diagnostics.ProcessStartInfo
+                    $psi.FileName = $targetUrl
+                    $psi.UseShellExecute = $true
+                    [System.Diagnostics.Process]::Start($psi) | Out-Null
                 } catch {
-                    [System.Diagnostics.Process]::Start($targetUrl)
+                    try {
+                        Start-Process -FilePath $targetUrl
+                    } catch {
+                        cmd.exe /c start "" "$targetUrl"
+                    }
                 }
             }
             $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"ok\`":true}")
