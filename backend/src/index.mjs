@@ -2235,17 +2235,34 @@ function renderAuthErrorHtml(title, message) {
       for (const rawD of destinations) {
         const d = { ...(rawD.credentials || {}), ...rawD };
         if (d.platform === 'facebook' && d.liveVideoId) {
-          teardowns.push(endFacebookLiveVideo(d.liveVideoId, d.accessToken || fbToken));
+          teardowns.push(
+            endFacebookLiveVideo(d.liveVideoId, d.accessToken || fbToken)
+              .then((res) => ({ platform: 'facebook', id: d.liveVideoId, ...res }))
+          );
         } else if (d.platform === 'youtube' && d.broadcastId) {
-          teardowns.push(endYouTubeBroadcast(d.broadcastId, d.refreshToken || ytRefreshToken));
+          teardowns.push(
+            endYouTubeBroadcast(d.broadcastId, d.refreshToken || ytRefreshToken)
+              .then((res) => ({ platform: 'youtube', id: d.broadcastId, ...res }))
+          );
         }
       }
     } else {
-      if (liveVideoId) teardowns.push(endFacebookLiveVideo(liveVideoId, fbToken));
-      if (broadcastId) teardowns.push(endYouTubeBroadcast(broadcastId, ytRefreshToken));
+      if (liveVideoId) {
+        teardowns.push(
+          endFacebookLiveVideo(liveVideoId, fbToken)
+            .then((res) => ({ platform: 'facebook', id: liveVideoId, ...res }))
+        );
+      }
+      if (broadcastId) {
+        teardowns.push(
+          endYouTubeBroadcast(broadcastId, ytRefreshToken)
+            .then((res) => ({ platform: 'youtube', id: broadcastId, ...res }))
+        );
+      }
     }
 
     const results = await Promise.allSettled(teardowns);
+    console.log('[Orchestrator] Teardown results:', JSON.stringify(results.map((r) => r.value || r.reason)));
     return sendJson(res, 200, { ok: true, results });
   }
 

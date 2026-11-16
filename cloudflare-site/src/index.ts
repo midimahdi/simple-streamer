@@ -191,6 +191,11 @@ export default {
       pathname.startsWith('/auth') ||
       pathname === '' ||
       pathname === '/' ||
+      pathname === '/dock' ||
+      pathname === '/app' ||
+      pathname === '/index.html' ||
+      pathname.endsWith('.js') ||
+      pathname.endsWith('.css') ||
       pathname === '/remote' ||
       pathname === '/remote.html' ||
       pathname === '/broadcast-status' ||

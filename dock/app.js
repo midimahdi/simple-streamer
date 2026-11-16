@@ -3681,8 +3681,24 @@ async function handleGoLive() {
     sessionStorage.setItem('simple_streamer_stream_managed', 'true');
     state.isManagedStream = true;
     state.isExternalStream = false;
+    state.isPreparing = true;
+    el.actionBtn.disabled = true;
+    el.actionBtnText.textContent = 'CONNECTING TO RTMP...';
     await state.obs.call('StartStream');
-    setLiveUI(true);
+    // Note: Do not synchronously transition to live UI here.
+    // OBS outputActive will become true and stateStr will become OBS_WEBSOCKET_OUTPUT_STARTED
+    // once the RTMP handshake is verified by OBS.
+    setTimeout(async () => {
+      if (state.isManagedStream && !state.isStreaming && state.obs?.isConnected) {
+        try {
+          const status = await state.obs.call('GetStreamStatus');
+          if (status.outputActive) {
+            state.isPreparing = false;
+            setLiveUI(true);
+          }
+        } catch (_) {}
+      }
+    }, 4000);
   } catch (err) {
     sessionStorage.removeItem('simple_streamer_stream_managed');
     state.isManagedStream = false;
@@ -4693,14 +4709,32 @@ function initEvents() {
     const stateStr = data.outputState || '';
     logDiag(`OBS StreamStateChanged: active=${data.outputActive}, state=${stateStr}`);
 
-    // 1. If OBS is starting up or we are still preparing the stream, NEVER treat as stopped!
-    if (stateStr === 'OBS_WEBSOCKET_OUTPUT_STARTING' || state.isPreparing) {
+    // 1. If OBS is starting up or reconnecting, or we are still preparing the stream:
+    if (
+      stateStr === 'OBS_WEBSOCKET_OUTPUT_STARTING' ||
+      stateStr === 'OBS_WEBSOCKET_OUTPUT_RECONNECTING' ||
+      state.isPreparing
+    ) {
       logDiag(`OBS output state: ${stateStr || 'starting'} (in progress)`);
+      if (data.outputActive || stateStr === 'OBS_WEBSOCKET_OUTPUT_STARTED') {
+        state.isPreparing = false;
+        const isManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
+        if (isManaged) {
+          state.isManagedStream = true;
+          state.isExternalStream = false;
+          if (!state.isStreaming) setLiveUI(true);
+        } else {
+          state.isManagedStream = false;
+          state.isExternalStream = true;
+          setExternalLiveUI(true);
+        }
+      }
       return;
     }
 
     // 2. Stream is actively running
     if (data.outputActive || stateStr === 'OBS_WEBSOCKET_OUTPUT_STARTED') {
+      state.isPreparing = false;
       const isManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
       if (isManaged) {
         state.isManagedStream = true;
@@ -4715,14 +4749,15 @@ function initEvents() {
     }
 
     // 3. Stream has genuinely stopped (OBS_WEBSOCKET_OUTPUT_STOPPED)
-    if (stateStr === 'OBS_WEBSOCKET_OUTPUT_STOPPED' || (!data.outputActive && stateStr !== 'OBS_WEBSOCKET_OUTPUT_STOPPING')) {
+    if (stateStr === 'OBS_WEBSOCKET_OUTPUT_STOPPED') {
       const wasActuallyStreaming = state.isStreaming;
       const wasManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
+      const wasStreamingLongEnough = state.streamStartTime && (Date.now() - state.streamStartTime > 5000);
       sessionStorage.removeItem('simple_streamer_stream_managed');
       state.isManagedStream = false;
 
-      if (wasActuallyStreaming && wasManaged) {
-        // Only tear down if the broadcast was genuinely LIVE and active
+      if (wasActuallyStreaming && wasManaged && wasStreamingLongEnough) {
+        // Only tear down if the broadcast was genuinely LIVE and active for > 5s
         logDiag('OBS stream stopped externally. Tearing down remote destinations...');
         if (state.activeBroadcast?.destinations?.length > 0) {
           const token = getAuthToken();
@@ -4742,6 +4777,10 @@ function initEvents() {
             }),
           }).catch(() => {});
         }
+        setLiveUI(false);
+        setTimeout(restoreOriginalStreamServiceSettings, 1000);
+      } else if (wasActuallyStreaming && wasManaged) {
+        logDiag('OBS stopped shortly after start (<5s). Preserving remote broadcast state without destructive teardown.');
         setLiveUI(false);
         setTimeout(restoreOriginalStreamServiceSettings, 1000);
       } else if (state.isExternalStream) {
