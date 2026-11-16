@@ -302,7 +302,7 @@ export async function handleRequest(req, res) {
     const hasUpdate = isNewerVersion(release.latestVersion, APP_VERSION);
     const isTestMode = Boolean(process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_'));
     const testDealUrl = 'https://buy.stripe.com/test_14A4gz2MSbG72c431W5EY00';
-    const liveDealUrl = process.env.STRIPE_PAYMENT_LINK_URL || 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01';
+    const liveDealUrl = process.env.STRIPE_PAYMENT_LINK_URL || 'https://buy.stripe.com/fZuaEXafk39B03W6e85EY02';
     const standardPricingUrl = process.env.STRIPE_STANDARD_PAYMENT_URL || 'https://simple-streamer.bdjlmn.com#pricing';
 
     // Conditional Pro Deal configuration

@@ -56,7 +56,7 @@ const state = {
     dealActive: true,
     ctaLabel: '⚡ Claim Lifetime Pass ($5 Once) ↗',
     alertCtaLabel: 'LIFETIME PASS ($5) ↗',
-    paymentUrl: 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01',
+    paymentUrl: 'https://buy.stripe.com/fZuaEXafk39B03W6e85EY02',
     expiresAt: null,
   },
   discoveryCallback: null,
@@ -458,7 +458,7 @@ function getProOffer() {
       isDealActive = false;
     }
   }
-  const paymentUrl = offer.paymentUrl || state.config.stripePaymentUrl || 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01';
+  const paymentUrl = offer.paymentUrl || state.config.stripePaymentUrl || 'https://buy.stripe.com/fZuaEXafk39B03W6e85EY02';
   return {
     dealActive: isDealActive,
     title: isDealActive ? '🔥 LIFETIME FOUNDING DEAL — $5 ONCE' : '⭐ SIMPLE STREAMER PRO ($12/YR)',
