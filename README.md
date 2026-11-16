@@ -90,11 +90,11 @@ Simple Streamer runs right inside OBS Studio to give you a clean, smooth broadca
 
 | Feature | Simple Streamer | Other OBS Multi-RTMP Plugins | Paid Cloud Websites (Restream, Castr) |
 | :--- | :--- | :--- | :--- |
-| **Cost** | **Free / \$5 Lifetime** | Free | \$228 to \$588 every year |
+| **Cost** | **Freemium (Free / \$5 Lifetime)** | Free | \$228 to \$588 every year |
 | **Extra Computer Work (CPU/GPU)** | **0% (Uses existing encoder)** | High (Encodes video multiple times) | None (Handled on remote servers) |
 | **Stream Delay (Lag)** | **0 seconds (Direct)** | 0 seconds (Direct) | 2 to 5 seconds extra cloud delay |
-| **Stream Key Setup** | **1-Click Automatic Sync** | Manual copy-paste every stream | Automatic |
-| **Mobile Phone Remote** | **Included Free (Wi-Fi + Cellular)** | ❌ None | ❌ Requires separate paid apps |
+| **Stream Key Setup** | **1-Click Automatic Sync** | Manual copy-paste setup | Automatic |
+| **Mobile Phone Remote** | **Free (Wi-Fi + Cellular)** | ❌ None | ❌ Requires separate paid apps |
 | **Update Title Mid-Stream** | **1-Click Sync to All Platforms** | ❌ None | Web dashboard only |
 | **Data Privacy** | **100% Local on Your PC** | Local on Your PC | Stored on third-party cloud servers |
 
