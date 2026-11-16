@@ -164,7 +164,17 @@ export async function getFacebookLiveStatus(liveVideoId, accessToken = process.e
  * @param {string} params.accessToken
  * @returns {Promise<{ valid: boolean, name?: string, pageId?: string, error?: string }>}
  */
-export async function validateFacebookPage({ pageId, accessToken }) {
+export async function validateFacebookPage({ pageId, accessToken, streamKey, name }) {
+  if (streamKey && !accessToken) {
+    return {
+      valid: true,
+      name: name || 'Facebook Live',
+      pageId: pageId || 'stream_key',
+      serverUrl: 'rtmps://live-api-s.facebook.com:443/rtmp/',
+      streamKey,
+    };
+  }
+
   if (!pageId || !accessToken) {
     return { valid: false, error: 'Missing pageId or accessToken' };
   }
@@ -238,4 +248,55 @@ export async function reconcileFacebookMetadata({ liveVideoId, title, descriptio
     return { ok: false, error: err.message };
   }
 }
+
+/**
+ * Uploads and sets a primary custom thumbnail for an active Facebook Live Video.
+ *
+ * @param {Object} params
+ * @param {string} params.liveVideoId
+ * @param {Buffer} params.imageBuffer
+ * @param {string} [params.mimeType='image/jpeg']
+ * @param {string} [params.accessToken]
+ * @param {string} [params.customAppSecret]
+ * @returns {Promise<{ ok: boolean, data?: object, error?: string }>}
+ */
+export async function setFacebookThumbnail({
+  liveVideoId,
+  imageBuffer,
+  mimeType = 'image/jpeg',
+  accessToken = process.env.FACEBOOK_ACCESS_TOKEN,
+  customAppSecret = null,
+}) {
+  if (!liveVideoId || !imageBuffer || !accessToken) {
+    return { ok: false, error: 'Missing liveVideoId, imageBuffer, or accessToken for Facebook thumbnail.' };
+  }
+
+  try {
+    const appsecretProof = getAppSecretProof(accessToken, customAppSecret);
+    const endpoint = `${META_GRAPH_BASE}/${encodeURIComponent(liveVideoId)}/thumbnails${
+      appsecretProof ? `?appsecret_proof=${encodeURIComponent(appsecretProof)}` : ''
+    }`;
+
+    const formData = new FormData();
+    formData.append('is_preferred', 'true');
+    formData.append('access_token', accessToken);
+    formData.append('source', new Blob([imageBuffer], { type: mimeType }), 'thumbnail.jpg');
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, error: `Facebook thumbnail upload failed (${res.status}): ${errText}` };
+    }
+
+    const data = await res.json();
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 

@@ -987,6 +987,50 @@
       flex-shrink: 0;
       box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
     }
+
+    /* Right-to-Left (RTL) Support for Mobile Remote */
+    [dir="rtl"] {
+      text-align: right;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Cairo", "Noto Sans Arabic", Tahoma, sans-serif;
+    }
+
+    [dir="rtl"] .app-header {
+      flex-direction: row;
+    }
+
+    [dir="rtl"] .telemetry-value,
+    [dir="rtl"] #metricUptime,
+    [dir="rtl"] #audioDbReadout,
+    [dir="rtl"] .action-zone,
+    [dir="rtl"] .slider-track {
+      direction: ltr;
+    }
+
+    [dir="rtl"] .hud-badge-left {
+      left: auto;
+      right: 8px;
+    }
+
+    [dir="rtl"] .hud-badge-right {
+      right: auto;
+      left: 8px;
+    }
+
+    [dir="rtl"] .audio-strip-meta {
+      flex-direction: row-reverse;
+    }
+
+    [dir="rtl"] .staging-actions {
+      flex-direction: row-reverse;
+    }
+
+    [dir="rtl"] .title-display-wrap {
+      flex-direction: row;
+    }
+
+    [dir="rtl"] .modal-btn-row {
+      flex-direction: row-reverse;
+    }
   </style>
 </head>
 <body>
@@ -999,15 +1043,16 @@
         <path d="M4 4a16 16 0 0 1 16 16"></path>
         <circle cx="5" cy="19" r="1"></circle>
       </svg>
-      <span class="brand-name">SIMPLE STREAMER</span>
+      <span class="brand-name" data-i18n="remoteBrand">SIMPLE STREAMER</span>
     </div>
     <div class="header-actions">
+      <button id="btnRemoteLang" class="btn-lang-toggle" style="background: var(--bg-card-subtle); border: 1px solid var(--border-subtle); color: #93c5fd; padding: 4px 9px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">عربي</button>
       <button id="btnInstallApp" class="btn-install-shortcut" style="display: none;">
-        <span>📲 Install</span>
+        <span data-i18n="remoteInstall">📲 Install</span>
       </button>
       <div id="connBadge" class="conn-badge">
         <span id="connDot" class="conn-dot"></span>
-        <span id="connText">CONNECTING</span>
+        <span id="connText" data-i18n="remoteConnecting">CONNECTING</span>
       </div>
     </div>
   </header>
@@ -1016,7 +1061,7 @@
   <div id="rigSwitcherBar" class="rig-switcher-bar">
     <div class="rig-switcher-title">
       <span class="rig-dot" style="background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green);"></span>
-      <span>Broadcasters:</span>
+      <span data-i18n="broadcastersTitle">Broadcasters:</span>
     </div>
     <div id="rigButtonsWrap" class="rig-buttons-wrap"></div>
   </div>
@@ -1024,10 +1069,10 @@
   <!-- OBS Closed Alert Banner -->
   <div id="obsClosedNotice" class="obs-closed-notice" style="display: none;">
     <div class="obs-closed-left">
-      <span class="obs-closed-tag">OBS Closed</span>
-      <span class="obs-closed-desc">OBS is closed on <strong id="obsClosedHost">this machine</strong>.</span>
+      <span class="obs-closed-tag" data-i18n="obsClosedTitle">OBS Closed</span>
+      <span class="obs-closed-desc" data-i18n="obsClosedDesc">OBS is closed on <strong id="obsClosedHost">this machine</strong>.</span>
     </div>
-    <button id="btnSwitchToActive" class="btn-switch-active" style="display: none;">
+    <button id="btnSwitchToActive" class="btn-switch-active" data-i18n="switchToActive" style="display: none;">
       Switch to Active Stream
     </button>
   </div>
@@ -1042,12 +1087,12 @@
           <line x1="17" y1="2" x2="17" y2="22"></line>
           <line x1="2" y1="12" x2="22" y2="12"></line>
         </svg>
-        <span>Awaiting OBS Program...</span>
+        <span data-i18n="awaitingObs">Awaiting OBS Program...</span>
       </div>
       <img id="videoFrame" class="video-viewport-img" style="display: none;" alt="OBS Live Preview" />
       
       <div id="videoBadge" class="hud-badge-left">
-        <span>●</span> <span id="badgeStatus">STANDBY</span>
+        <span>●</span> <span id="badgeStatus" data-i18n="remoteStandby">STANDBY</span>
       </div>
       <div id="hudSceneTag" class="hud-badge-right">Scene 2</div>
     </div>
@@ -1061,14 +1106,14 @@
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
             <line x1="12" y1="19" x2="12" y2="22"></line>
           </svg>
-          <span id="audioName">MASTER AUDIO</span>
-          <span id="silenceAlertTag" class="audio-silence-tag" style="display: none;">⚠️ SILENCE (5s+)</span>
+          <span id="audioName" data-i18n="masterAudio">MASTER AUDIO</span>
+          <span id="silenceAlertTag" class="audio-silence-tag" data-i18n="silenceAlert" style="display: none;">⚠️ SILENCE (5s+)</span>
         </div>
         <div class="audio-controls-right">
           <span id="audioDbReadout" class="audio-db-readout">-∞ dB</span>
           <button id="btnMicMute" class="btn-mic-mute" title="Toggle Microphone Mute">
             <span id="micMuteIcon">🎙️</span>
-            <span id="micMuteLabel">MUTE</span>
+            <span id="micMuteLabel" data-i18n="btnMute">MUTE</span>
           </button>
         </div>
       </div>
@@ -1081,7 +1126,7 @@
   <!-- 2. Scene Director (2-Step Safety Cut) -->
   <div class="studio-card director-card">
     <div class="card-title-row">
-      <span class="card-header-label">SCENE DIRECTOR</span>
+      <span class="card-header-label" data-i18n="sceneDirector">SCENE DIRECTOR</span>
       <span id="directorCurrentTag" class="card-header-status">LIVE: Scene 2</span>
     </div>
 
@@ -1089,9 +1134,9 @@
     <div id="stagingConfirmBox" class="staging-confirm-box">
       <span id="stagingText" class="staging-text">Stage: Camera Only</span>
       <div class="staging-actions">
-        <button id="btnCancelStage" class="btn-stage-cancel">Cancel</button>
+        <button id="btnCancelStage" class="btn-stage-cancel" data-i18n="btnCancel">Cancel</button>
         <button id="btnConfirmCut" class="btn-stage-cut">
-          <span>●</span> <span>CUT LIVE ❯</span>
+          <span>●</span> <span data-i18n="btnCutLive">CUT LIVE ❯</span>
         </button>
       </div>
     </div>
@@ -1108,8 +1153,8 @@
   <!-- 3. Broadcast Targets & Title Card -->
   <div class="studio-card broadcast-info-card">
     <div class="card-title-row">
-      <span class="card-header-label">BROADCAST INFO</span>
-      <button id="btnEditTitle" class="btn-edit-title">Edit Details</button>
+      <span class="card-header-label" data-i18n="broadcastInfo">BROADCAST INFO</span>
+      <button id="btnEditTitle" class="btn-edit-title" data-i18n="btnEditDetails">Edit Details</button>
     </div>
     <div class="title-display-wrap">
       <div style="flex: 1; min-width: 0;">
@@ -1118,28 +1163,28 @@
       </div>
     </div>
 
-    <div class="card-header-label" style="margin-top: 6px;">TARGET PLATFORMS</div>
+    <div class="card-header-label" data-i18n="targetPlatforms" style="margin-top: 6px;">TARGET PLATFORMS</div>
     <div id="destinationsRow" class="targets-pills-row">
-      <span class="platform-pill disabled" style="cursor:default;">Connecting to platforms...</span>
+      <span class="platform-pill disabled" style="cursor:default;" data-i18n="connectingPlatforms">Connecting to platforms...</span>
     </div>
   </div>
 
   <!-- 4. Real-Time Telemetry Ribbon -->
   <div class="telemetry-row">
     <div class="telemetry-col">
-      <span class="telemetry-label">UPTIME</span>
+      <span class="telemetry-label" data-i18n="metricUptime">UPTIME</span>
       <span id="metricUptime" class="telemetry-value">00:00:00</span>
     </div>
     <div class="telemetry-col">
-      <span class="telemetry-label">BITRATE</span>
+      <span class="telemetry-label" data-i18n="metricBitrate">BITRATE</span>
       <span id="metricBitrate" class="telemetry-value">0 kbps</span>
     </div>
     <div class="telemetry-col">
-      <span class="telemetry-label">FPS</span>
+      <span class="telemetry-label" data-i18n="metricFps">FPS</span>
       <span id="metricFps" class="telemetry-value">0</span>
     </div>
     <div class="telemetry-col">
-      <span class="telemetry-label">DROPPED</span>
+      <span class="telemetry-label" data-i18n="metricDropped">DROPPED</span>
       <span id="metricDropped" class="telemetry-value">0%</span>
     </div>
   </div>
@@ -1148,7 +1193,7 @@
   <div class="action-zone">
     <div id="sliderTrack" class="slider-track">
       <div id="sliderFill" class="slider-fill"></div>
-      <div id="sliderLabel" class="slider-label">SLIDE TO GO LIVE ❯❯</div>
+      <div id="sliderLabel" class="slider-label" data-i18n="slideToLive">SLIDE TO GO LIVE ❯❯</div>
       <div id="sliderThumb" class="slider-thumb">❯</div>
     </div>
   </div>
@@ -1156,13 +1201,13 @@
   <!-- Confirm End Live Broadcast Modal -->
   <div id="endLiveModal" class="modal-backdrop">
     <div class="modal-card">
-      <div id="endLiveModalTitle" class="modal-heading">End Live Broadcast?</div>
-      <div id="endLiveModalDesc" class="modal-desc">
+      <div id="endLiveModalTitle" class="modal-heading" data-i18n="endLiveTitle">End Live Broadcast?</div>
+      <div id="endLiveModalDesc" class="modal-desc" data-i18n="endLiveDesc">
         Are you sure you want to stop the live stream on all active destinations?
       </div>
       <div class="modal-btn-row">
-        <button id="btnCancelEndLiveModal" class="btn-modal btn-modal-cancel">Keep Streaming</button>
-        <button id="btnConfirmEndLiveModal" class="btn-modal btn-modal-confirm-red">Yes, End Live</button>
+        <button id="btnCancelEndLiveModal" class="btn-modal btn-modal-cancel" data-i18n="btnKeepStreaming">Keep Streaming</button>
+        <button id="btnConfirmEndLiveModal" class="btn-modal btn-modal-confirm-red" data-i18n="btnEndLive">Yes, End Live</button>
       </div>
     </div>
   </div>
@@ -1170,13 +1215,13 @@
   <!-- Confirm Mic Mute Modal -->
   <div id="muteConfirmModal" class="modal-backdrop">
     <div class="modal-card">
-      <div id="muteModalTitle" class="modal-heading">Mute Microphone?</div>
-      <div id="muteModalDesc" class="modal-desc">
+      <div id="muteModalTitle" class="modal-heading" data-i18n="muteModalTitle">Mute Microphone?</div>
+      <div id="muteModalDesc" class="modal-desc" data-i18n="muteModalDesc">
         This will immediately silence the mosque microphone output in OBS Studio.
       </div>
       <div class="modal-btn-row">
-        <button id="btnCancelMuteModal" class="btn-modal btn-modal-cancel">Cancel</button>
-        <button id="btnConfirmMuteModal" class="btn-modal btn-modal-confirm-red">Yes, Mute</button>
+        <button id="btnCancelMuteModal" class="btn-modal btn-modal-cancel" data-i18n="btnCancel">Cancel</button>
+        <button id="btnConfirmMuteModal" class="btn-modal btn-modal-confirm-red" data-i18n="btnYesMute">Yes, Mute</button>
       </div>
     </div>
   </div>
@@ -1184,14 +1229,14 @@
   <!-- Edit Details Modal -->
   <div id="editTitleModal" class="modal-backdrop">
     <div class="modal-card">
-      <div class="modal-heading">Edit Broadcast Details</div>
-      <label style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px; display: block;">BROADCAST TITLE</label>
+      <div class="modal-heading" data-i18n="editDetailsTitle">Edit Broadcast Details</div>
+      <label data-i18n="broadcastTitleLabel" style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px; display: block;">BROADCAST TITLE</label>
       <input type="text" id="modalTitleInput" class="modal-input" placeholder="e.g. Friday Sermon or Weekly Lecture" maxlength="120" />
-      <label style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-top: 10px; margin-bottom: 4px; display: block;">DESCRIPTION</label>
+      <label data-i18n="broadcastDescLabel" style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-top: 10px; margin-bottom: 4px; display: block;">DESCRIPTION</label>
       <textarea id="modalDescInput" class="modal-input" style="height: 64px; resize: none; font-family: inherit; font-size: 12px; line-height: 1.4;" placeholder="e.g. Weekly sermon transmitted from the main prayer hall..."></textarea>
       <div class="modal-btn-row">
-        <button id="btnCancelTitleModal" class="btn-modal btn-modal-cancel">Cancel</button>
-        <button id="btnSaveTitleModal" class="btn-modal btn-modal-confirm-blue">Save Details</button>
+        <button id="btnCancelTitleModal" class="btn-modal btn-modal-cancel" data-i18n="btnCancel">Cancel</button>
+        <button id="btnSaveTitleModal" class="btn-modal btn-modal-confirm-blue" data-i18n="btnSaveDetails">Save Details</button>
       </div>
     </div>
   </div>
@@ -1199,37 +1244,39 @@
   <!-- Switch PC / Reconnect Modal -->
   <div id="switchPcModal" class="modal-backdrop">
     <div class="modal-card">
-      <div class="modal-heading">Connect to OBS Studio</div>
+      <div class="modal-heading" data-i18n="connectObsTitle">Connect to OBS Studio</div>
       <div id="switchPcDesc" class="modal-desc" style="font-size: 12px; line-height: 1.4; color: var(--text-dim);">
         Targeting host: <strong id="currentHostText" style="color: var(--text-main); font-family: ui-monospace, monospace;">127.0.0.1</strong>
       </div>
 
       <div id="discoveryStatusWrap" style="background: var(--bg-card-subtle); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; margin: 12px 0; font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 8px;">
         <span class="pulse-indicator"></span>
-        <span id="discoveryStatusText">Searching for OBS PC on Wi-Fi...</span>
+        <span id="discoveryStatusText" data-i18n="searchingObsPc">Searching for OBS PC on Wi-Fi...</span>
       </div>
 
       <!-- Quick Action: Scan QR from OBS Dock -->
       <label class="btn-modal btn-modal-confirm-blue" style="display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; margin-bottom: 14px; font-size: 13px; font-weight: 700;">
-        <span>📷</span> <span>Scan OBS Dock QR Code</span>
+        <span>📷</span> <span data-i18n="scanQrCode">Scan OBS Dock QR Code</span>
         <input type="file" id="qrScanInput" accept="image/*" capture="environment" style="display: none;" />
       </label>
 
-      <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
+      <div data-i18n="orEnterIp" style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
         Or enter IP / Hostname:
       </div>
       <div style="display: flex; gap: 6px;">
         <input type="text" id="manualIpInput" class="modal-input" style="flex: 1; font-family: ui-monospace, monospace; font-size: 12px;" placeholder="e.g. 192.168.1.15 or simple-streamer.local" />
-        <button id="btnConnectManualIp" class="btn-modal btn-modal-confirm-blue" style="padding: 0 14px; white-space: nowrap; font-size: 12px;">Connect</button>
+        <button id="btnConnectManualIp" class="btn-modal btn-modal-confirm-blue" data-i18n="btnConnect" style="padding: 0 14px; white-space: nowrap; font-size: 12px;">Connect</button>
       </div>
 
       <div class="modal-btn-row" style="margin-top: 14px;">
-        <button id="btnCloseSwitchPc" class="btn-modal btn-modal-cancel" style="flex: 1;">Close</button>
+        <button id="btnCloseSwitchPc" class="btn-modal btn-modal-cancel" data-i18n="btnClose" style="flex: 1;">Close</button>
       </div>
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import { t, setLanguage, getLanguage, I18N } from './locales.js';
+
     // --- Application State ---
     const state = {
       ws: null,
@@ -1261,6 +1308,7 @@
 
     // UI Cache
     const el = {
+      btnRemoteLang: document.getElementById('btnRemoteLang'),
       connBadge: document.getElementById('connBadge'),
       connDot: document.getElementById('connDot'),
       connText: document.getElementById('connText'),
@@ -1322,6 +1370,38 @@
       obsClosedHost: document.getElementById('obsClosedHost'),
       btnSwitchToActive: document.getElementById('btnSwitchToActive'),
     };
+
+    // --- Localization & Language Switcher ---
+    function updateLangButtonUi() {
+      if (!el.btnRemoteLang) return;
+      const current = getLanguage();
+      el.btnRemoteLang.textContent = current === 'ar' ? 'English' : 'عربي';
+    }
+
+    function handleRemoteLangToggle() {
+      const nextLang = getLanguage() === 'ar' ? 'en' : 'ar';
+      setLanguage(nextLang);
+      updateLangButtonUi();
+
+      // Refresh dynamic values on screen
+      setConnectionStatus(state.isConnected ? 'connected' : (state.ws ? 'connecting' : 'offline'));
+      updateSceneUi();
+      updateMuteButtonUi();
+      if (state.isStreaming) {
+        if (el.sliderLabel) el.sliderLabel.textContent = t('slideToStop');
+        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteLive');
+      } else {
+        if (el.sliderLabel) el.sliderLabel.textContent = t('slideToLive');
+        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteStandby');
+      }
+      if (state.destinations) {
+        renderDestinationsPills(state.destinations);
+      }
+    }
+
+    if (el.btnRemoteLang) {
+      el.btnRemoteLang.onclick = handleRemoteLangToggle;
+    }
 
     // --- Tactile Feedback System (Haptic Vibration + High-Visibility Flash Backup) ---
     // Essential for iOS Safari (which lacks Web Vibration API) and noisy control booths.
@@ -1761,7 +1841,7 @@
         const prevScene = d.eventData.sceneName || d.eventData.currentPreviewSceneName;
         if (prevScene && prevScene !== state.currentScene && prevScene !== state.stagedScene) {
           state.stagedScene = prevScene;
-          if (el.stagingText) el.stagingText.textContent = `Stage: ${prevScene}`;
+          if (el.stagingText) el.stagingText.textContent = t('stagePrefix', { name: prevScene });
           if (el.stagingConfirmBox) el.stagingConfirmBox.style.display = 'flex';
           updateSceneUi();
           fetchPreviewFrame(prevScene);
@@ -1870,16 +1950,16 @@
       if (!el.destinationsRow) return;
       el.destinationsRow.innerHTML = '';
       if (!targets || targets.length === 0) {
-        el.destinationsRow.innerHTML = '<span class="platform-pill disabled" style="cursor:default;">No platforms configured</span>';
+        el.destinationsRow.innerHTML = `<span class="platform-pill disabled" style="cursor:default;">${t('noDestinationsTitle')}</span>`;
         return;
       }
-      targets.forEach(t => {
-        const isEnabled = t.enabled !== false;
+      targets.forEach(target => {
+        const isEnabled = target.enabled !== false;
         const pill = document.createElement('button');
         pill.type = 'button';
         pill.className = 'platform-pill ' + (isEnabled ? 'active' : 'disabled') + (state.isStreaming ? ' locked' : '');
-        pill.title = state.isStreaming ? 'Target platforms locked during live broadcast' : `Tap to ${isEnabled ? 'disable' : 'enable'} ${t.name || t.platform}`;
-        pill.innerHTML = `<span class="platform-dot ${isEnabled ? '' : 'disabled'}"></span> ${t.name || t.platform}`;
+        pill.title = state.isStreaming ? 'Target platforms locked during live broadcast' : `Tap to ${isEnabled ? 'disable' : 'enable'} ${target.name || target.platform}`;
+        pill.innerHTML = `<span class="platform-dot ${isEnabled ? '' : 'disabled'}"></span> ${target.name || target.platform}`;
 
         pill.onclick = async () => {
           if (state.isStreaming) {
@@ -1890,7 +1970,7 @@
           triggerFeedback(pill, isEnabled ? 'tap' : 'success');
 
           // Optimistic local toggle
-          t.enabled = !isEnabled;
+          target.enabled = !isEnabled;
           renderDestinationsPills(targets);
 
           // 1. Broadcast change to OBS Studio Dock via WebSocket
@@ -1898,8 +1978,8 @@
             await callWs('BroadcastCustomEvent', {
               eventData: {
                 action: 'TOGGLE_DESTINATION',
-                id: t.id,
-                enabled: t.enabled
+                id: target.id,
+                enabled: target.enabled
               }
             });
           } catch (err) {
@@ -1908,7 +1988,7 @@
 
           // 2. Persist directly to Bridge HTTP state
           try {
-            fetch(`http://${hostIp}:${bridgePort}/toggle-destination?id=${encodeURIComponent(t.id)}&enabled=${t.enabled ? 1 : 0}`).catch(() => {});
+            fetch(`http://${hostIp}:${bridgePort}/toggle-destination?id=${encodeURIComponent(target.id)}&enabled=${target.enabled ? 1 : 0}`).catch(() => {});
           } catch (_) {}
         };
 
@@ -2062,11 +2142,11 @@
       if (state.audioMuted) {
         el.btnMicMute.classList.add('is-muted');
         el.micMuteIcon.textContent = '🔇';
-        el.micMuteLabel.textContent = 'UNMUTE';
+        el.micMuteLabel.textContent = t('btnUnmute');
       } else {
         el.btnMicMute.classList.remove('is-muted');
         el.micMuteIcon.textContent = '🎙️';
-        el.micMuteLabel.textContent = 'MUTE';
+        el.micMuteLabel.textContent = t('btnMute');
       }
     }
 
@@ -2079,9 +2159,9 @@
       } else {
         // Safe confirm modal before muting
         triggerFeedback(el.btnMicMute, 'tap');
-        el.muteModalTitle.textContent = 'Mute Microphone?';
-        el.muteModalDesc.textContent = 'Are you sure you want to silence all audio going to OBS and the broadcast?';
-        el.btnConfirmMuteModal.textContent = 'Yes, Mute Audio';
+        el.muteModalTitle.textContent = t('muteModalTitle');
+        el.muteModalDesc.textContent = t('muteModalDesc');
+        el.btnConfirmMuteModal.textContent = t('btnYesMute');
         el.muteConfirmModal.style.display = 'flex';
       }
     };
@@ -2139,7 +2219,7 @@
       if (!el.sceneGrid) return;
       el.sceneGrid.innerHTML = '';
       if (!state.scenes || state.scenes.length === 0) {
-        el.sceneGrid.innerHTML = '<div class="scene-tile"><span class="scene-tile-name">No Scenes</span></div>';
+        el.sceneGrid.innerHTML = `<div class="scene-tile"><span class="scene-tile-name">${t('noScenes')}</span></div>`;
         return;
       }
 
@@ -2152,9 +2232,10 @@
         tile.className = 'scene-tile' + (isLive ? ' live-active' : '') + (isStaged ? ' staged' : '');
         tile.dataset.scene = name;
 
+        const subText = isLive ? t('onAir') : (isStaged ? t('queued') : t('tapToStage'));
         tile.innerHTML = `
           <span class="scene-tile-name">${name}</span>
-          <span class="scene-tile-sub">${isLive ? '● ON AIR' : (isStaged ? 'QUEUED' : 'Tap to Stage')}</span>
+          <span class="scene-tile-sub">${subText}</span>
         `;
 
         tile.onclick = () => {
@@ -2179,7 +2260,7 @@
     async function stageSceneForCut(sceneName, tile) {
       triggerFeedback(tile || el.stagingConfirmBox, 'stage');
       state.stagedScene = sceneName;
-      el.stagingText.textContent = `Stage: ${sceneName}`;
+      el.stagingText.textContent = t('stagePrefix', { name: sceneName });
       el.stagingConfirmBox.style.display = 'flex';
 
       // 1. Tell OBS Studio to stage scene in Preview (left side in Studio Mode)
@@ -2251,9 +2332,9 @@
         if (el.videoBadge) {
           el.videoBadge.className = 'hud-badge-left staged';
         }
-        if (el.badgeStatus) el.badgeStatus.textContent = 'STAGED PREVIEW';
+        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteStaged');
         if (el.hudSceneTag) {
-          el.hudSceneTag.textContent = `STAGED: ${state.stagedScene}`;
+          el.hudSceneTag.textContent = `${t('remoteStaged')}: ${state.stagedScene}`;
           el.hudSceneTag.style.background = 'rgba(245, 158, 11, 0.9)';
           el.hudSceneTag.style.color = '#000';
           el.hudSceneTag.style.borderColor = 'rgba(245, 158, 11, 0.8)';
@@ -2266,7 +2347,7 @@
         if (el.videoBadge) {
           el.videoBadge.className = state.isStreaming ? 'hud-badge-left live' : 'hud-badge-left';
         }
-        if (el.badgeStatus) el.badgeStatus.textContent = state.isStreaming ? 'LIVE' : 'STANDBY';
+        if (el.badgeStatus) el.badgeStatus.textContent = state.isStreaming ? t('remoteLive') : t('remoteStandby');
         if (el.hudSceneTag) {
           el.hudSceneTag.textContent = state.currentScene || 'NONE';
           el.hudSceneTag.style.background = 'rgba(10, 12, 16, 0.85)';
@@ -2275,10 +2356,10 @@
         }
         if (el.videoPlaceholder) {
           const phSpan = el.videoPlaceholder.querySelector('span');
-          if (phSpan) phSpan.textContent = 'Awaiting OBS Program...';
+          if (phSpan) phSpan.textContent = t('awaitingObs');
         }
       }
-      if (el.directorCurrentTag) el.directorCurrentTag.textContent = `LIVE: ${state.currentScene || 'NONE'}`;
+      if (el.directorCurrentTag) el.directorCurrentTag.textContent = `${t('directorLivePrefix')} ${state.currentScene || 'NONE'}`;
       renderSceneTiles();
     }
 
@@ -2324,12 +2405,12 @@
       el.connDot.className = 'conn-dot';
       if (type === 'connected') {
         el.connDot.classList.add(state.isStreaming ? 'live' : 'connected');
-        el.connText.textContent = state.isStreaming ? 'LIVE' : 'CONNECTED';
+        el.connText.textContent = state.isStreaming ? t('remoteLive') : t('remoteConnected');
       } else if (type === 'connecting') {
-        el.connText.textContent = 'CONNECTING';
+        el.connText.textContent = t('remoteConnecting');
       } else {
         el.connDot.classList.add('error');
-        el.connText.textContent = 'OFFLINE';
+        el.connText.textContent = t('remoteOffline');
       }
     }
 
@@ -2341,14 +2422,14 @@
 
       if (isLive) {
         el.videoBadge.className = 'hud-badge-left live';
-        el.badgeStatus.textContent = 'LIVE';
+        el.badgeStatus.textContent = t('remoteLive');
         el.sliderTrack.classList.add('live');
-        el.sliderLabel.textContent = 'SLIDE TO STOP ❯❯';
+        el.sliderLabel.textContent = t('slideToStop');
       } else {
         el.videoBadge.className = 'hud-badge-left';
-        el.badgeStatus.textContent = 'STANDBY';
+        el.badgeStatus.textContent = t('remoteStandby');
         el.sliderTrack.classList.remove('live');
-        el.sliderLabel.textContent = 'SLIDE TO GO LIVE ❯❯';
+        el.sliderLabel.textContent = t('slideToLive');
       }
 
       setConnectionStatus('connected');
@@ -2429,7 +2510,7 @@
           triggerFeedback(el.sliderTrack, feedbackType);
           thumb.style.transform = `translateX(${state.sliderMaxDrag}px)`;
           fill.style.width = '100%';
-          el.sliderLabel.textContent = 'PLEASE WAIT...';
+          el.sliderLabel.textContent = t('pleaseWait');
           el.sliderLabel.style.opacity = '1';
 
           if (state.isStreaming) {
@@ -2458,6 +2539,7 @@
       el.sliderFill.style.transition = 'width 0.25s ease-out';
       el.sliderThumb.style.transform = 'translateX(0px)';
       el.sliderFill.style.width = '0px';
+      el.sliderLabel.textContent = state.isStreaming ? t('slideToStop') : t('slideToLive');
       el.sliderLabel.style.opacity = '1';
       state.sliderCurrentX = 0;
     }
@@ -2622,6 +2704,8 @@
     }
 
     // --- Boot Sequence ---
+    setLanguage(getLanguage());
+    updateLangButtonUi();
     initSlider();
     initConfig();
   </script>

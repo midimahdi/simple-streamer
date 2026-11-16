@@ -12,6 +12,7 @@ import {
   getYouTubeBroadcastStatus,
   validateYouTubeChannel,
   reconcileYouTubeMetadata,
+  setYouTubeThumbnail,
 } from './youtube.mjs';
 import {
   createFacebookLiveVideo,
@@ -20,6 +21,7 @@ import {
   validateFacebookPage,
   getAppSecretProof,
   reconcileFacebookMetadata,
+  setFacebookThumbnail,
 } from './facebook.mjs';
 import {
   validateTwitchChannel,
@@ -35,9 +37,108 @@ import {
   saveConfig,
   verifyFacebookPage,
 } from './config-manager.mjs';
+import {
+  verifySession,
+  checkDeviceAndEntitlement,
+  isAutomatedOAuthRequested,
+  getUserPresets,
+  saveUserPresets,
+  mergePresets,
+  checkRateLimit,
+  PRO_REQUIRED_ERROR,
+  DEVICE_LIMIT_REACHED_ERROR,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+} from './auth.mjs';
+import {
+  createCheckoutSession,
+  createCustomerPortalSession,
+  verifyStripeSignature,
+  retrieveCheckoutSession,
+} from './stripe.mjs';
 
 // Auto-load .env configuration into memory
 loadConfig();
+
+export const APP_VERSION = '1.0.0';
+
+/**
+ * Compares two semver strings (e.g. '1.1.0' vs '1.0.0').
+ * Returns true if remote is strictly newer than local.
+ */
+export function isNewerVersion(remote, local) {
+  if (!remote || !local) return false;
+  const parse = (v) =>
+    String(v)
+      .replace(/^v/i, '')
+      .split('.')
+      .map((n) => parseInt(n, 10) || 0);
+  const r = parse(remote);
+  const l = parse(local);
+  for (let i = 0; i < Math.max(r.length, l.length); i++) {
+    const rPart = r[i] || 0;
+    const lPart = l[i] || 0;
+    if (rPart > lPart) return true;
+    if (rPart < lPart) return false;
+  }
+  return false;
+}
+
+let releaseVersionCache = {
+  data: null,
+  cachedAt: 0,
+};
+const RELEASE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in-memory cache to prevent GitHub API rate limits
+
+export async function fetchLatestGitHubRelease() {
+  const now = Date.now();
+  if (releaseVersionCache.data && now - releaseVersionCache.cachedAt < RELEASE_CACHE_TTL_MS) {
+    return releaseVersionCache.data;
+  }
+
+  try {
+    const res = await fetch('https://api.github.com/repos/midimahdi/simple-streamer/releases/latest', {
+      headers: {
+        'User-Agent': 'Simple-Streamer-Updater',
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (res.ok) {
+      const release = await res.json();
+      const rawTag = release.tag_name || '1.0.0';
+      const cleanVersion = rawTag.replace(/^v/i, '').trim();
+      releaseVersionCache = {
+        data: {
+          latestVersion: cleanVersion,
+          tagName: rawTag,
+          releaseUrl: release.html_url || 'https://github.com/midimahdi/simple-streamer/releases/latest',
+          publishedAt: release.published_at || new Date().toISOString(),
+          notes: (release.body || '').slice(0, 500),
+          windowsDownloadUrl: 'https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.exe',
+          macDownloadUrl: 'https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.dmg',
+        },
+        cachedAt: now,
+      };
+      return releaseVersionCache.data;
+    }
+  } catch (_) {
+    // Non-fatal network fallback
+  }
+
+  if (!releaseVersionCache.data) {
+    releaseVersionCache.data = {
+      latestVersion: APP_VERSION,
+      tagName: `v${APP_VERSION}`,
+      releaseUrl: 'https://github.com/midimahdi/simple-streamer/releases/latest',
+      publishedAt: new Date().toISOString(),
+      notes: '',
+      windowsDownloadUrl: 'https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.exe',
+      macDownloadUrl: 'https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.dmg',
+    };
+  }
+  return releaseVersionCache.data;
+}
 
 // In-memory pending auth sessions for seamless browser-to-OBS OAuth linking
 const pendingAuthSessions = new Map();
@@ -90,7 +191,7 @@ const API_KEY = process.env.ORCHESTRATOR_API_KEY || '';
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-device-hwid, x-device-name');
 }
 
 /**
@@ -126,6 +227,24 @@ async function parseJsonBody(req) {
         reject(new Error(`Malformed JSON body: ${err.message}`));
       }
     });
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Reads raw request body as UTF-8 string for HMAC webhook signature verification.
+ */
+async function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2e6) {
+        req.destroy();
+        reject(new Error('Request body payload too large (>2MB)'));
+      }
+    });
+    req.on('end', () => resolve(body));
     req.on('error', reject);
   });
 }
@@ -174,6 +293,53 @@ export async function handleRequest(req, res) {
   if (req.method === 'GET' && pathname === '/presets') {
     return sendJson(res, 200, {
       presets: Object.values(PRESETS).map((p) => ({ id: p.id, label: p.label })),
+    });
+  }
+
+  // Application Version Check & Update Endpoint
+  if (req.method === 'GET' && pathname === '/api/version') {
+    const release = await fetchLatestGitHubRelease();
+    const hasUpdate = isNewerVersion(release.latestVersion, APP_VERSION);
+    const isTestMode = Boolean(process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_'));
+    const testDealUrl = 'https://buy.stripe.com/test_14A4gz2MSbG72c431W5EY00';
+    const liveDealUrl = process.env.STRIPE_PAYMENT_LINK_URL || 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01';
+    const standardPricingUrl = process.env.STRIPE_STANDARD_PAYMENT_URL || 'https://simple-streamer.bdjlmn.com#pricing';
+
+    // Conditional Pro Deal configuration
+    const dealExpiryStr = process.env.PRO_DEAL_EXPIRES_AT || '';
+    const dealForceDisabled = process.env.PRO_DEAL_ACTIVE === 'false';
+    let isDealActive = !dealForceDisabled;
+    if (dealExpiryStr) {
+      const expiryMs = new Date(dealExpiryStr).getTime();
+      if (!isNaN(expiryMs) && Date.now() > expiryMs) {
+        isDealActive = false;
+      }
+    }
+
+    const currentPaymentUrl = isDealActive
+      ? (isTestMode ? testDealUrl : liveDealUrl)
+      : standardPricingUrl;
+
+    const proOffer = {
+      dealActive: isDealActive,
+      expiresAt: dealExpiryStr || null,
+      price: isDealActive ? (process.env.PRO_DEAL_PRICE || '$3') : null,
+      ctaLabel: isDealActive
+        ? `⚡ Upgrade to Pro (${process.env.PRO_DEAL_PRICE || '$3'} Limited Deal) ↗`
+        : '⚡ Upgrade to Pro ↗',
+      alertCtaLabel: isDealActive
+        ? `UPGRADE PRO (${process.env.PRO_DEAL_PRICE || '$3'}) ↗`
+        : 'UPGRADE PRO ↗',
+      paymentUrl: currentPaymentUrl,
+    };
+
+    return sendJson(res, 200, {
+      ok: true,
+      currentVersion: APP_VERSION,
+      stripePaymentUrl: currentPaymentUrl,
+      proOffer,
+      ...release,
+      hasUpdate,
     });
   }
 
@@ -277,7 +443,7 @@ function renderAuthErrorHtml(title, message) {
   // Initiate YouTube OAuth from Web UI (Universal 1-Click with Session Bridge)
   if (req.method === 'GET' && pathname === '/auth/youtube/start') {
     const cfg = loadConfig();
-    const clientId = cfg.YOUTUBE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID;
+    const clientId = cfg.YOUTUBE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID || '259167398353-p58h9lnpfcinuq8rqssn753td1n3a4n9.apps.googleusercontent.com';
     if (!clientId) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       return res.end('Error: YOUTUBE_CLIENT_ID is not configured on the server.');
@@ -310,8 +476,12 @@ function renderAuthErrorHtml(title, message) {
       const redirectUri = `${proto}://${host}/auth/callback/youtube`;
 
       const cfg = loadConfig();
-      const clientId = cfg.YOUTUBE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID;
+      const clientId = cfg.YOUTUBE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID || '259167398353-p58h9lnpfcinuq8rqssn753td1n3a4n9.apps.googleusercontent.com';
       const clientSecret = cfg.YOUTUBE_CLIENT_SECRET || process.env.YOUTUBE_CLIENT_SECRET;
+
+      if (!clientSecret) {
+        throw new Error('YOUTUBE_CLIENT_SECRET is missing on the server.');
+      }
 
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -772,6 +942,26 @@ function renderAuthErrorHtml(title, message) {
     }
   }
 
+  // Set Auth Session from Web Portal (Browser-to-OBS 1-Click Linking)
+  if (req.method === 'POST' && pathname === '/api/auth-session') {
+    try {
+      const body = await parseJsonBody(req);
+      const { sessionId, token, user } = body;
+      if (!sessionId || !token) {
+        return sendJson(res, 400, { ok: false, error: 'sessionId and token required' });
+      }
+      pendingAuthSessions.set(sessionId, {
+        platform: 'account',
+        token,
+        user: user || {},
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      });
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      return sendJson(res, 500, { ok: false, error: err.message });
+    }
+  }
+
   // Poll OAuth Session Endpoint (used by OBS Dock)
   if (req.method === 'GET' && pathname === '/api/auth-session') {
     const sessionId = url.searchParams.get('session');
@@ -795,6 +985,251 @@ function renderAuthErrorHtml(title, message) {
     });
   }
 
+  // Supabase Device Slot & Pro Entitlement Check Endpoint (OBS Dock & Bridge launch check)
+  if (req.method === 'POST' && pathname === '/auth/device-check') {
+    let body = {};
+    try {
+      body = await parseJsonBody(req);
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: err.message });
+    }
+
+    const authHeader = req.headers['authorization'] || (body.token ? `Bearer ${body.token}` : '');
+    const hwid = (req.headers['x-device-hwid'] || body.hwid || body.deviceHwid || '').trim();
+    const deviceName = req.headers['x-device-name'] || body.deviceName || 'Simple Streamer Desktop';
+
+    if (!authHeader) {
+      return sendJson(res, 401, {
+        ok: false,
+        error: 'UNAUTHORIZED',
+        message: 'Missing Authorization header or token',
+      });
+    }
+
+    if (!hwid || hwid.length < 8 || hwid === 'default-hwid') {
+      return sendJson(res, 400, {
+        ok: false,
+        error: 'DEVICE_IDENTIFIER_REQUIRED',
+        message: 'Valid hardware identifier (min 8 chars) is required for machine linking.',
+      });
+    }
+
+    const rawToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Direct Stripe Checkout Session instant activation (activates OBS before account registration)
+    if (rawToken.startsWith('cs_')) {
+      try {
+        const entRes = await fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements?stripe_session_id=eq.${encodeURIComponent(rawToken)}&select=*`, {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        });
+        if (entRes.ok) {
+          const rows = await entRes.json();
+          if (rows && rows.length > 0) {
+            const ent = rows[0];
+            return sendJson(res, 200, {
+              ok: true,
+              allowed: true,
+              status: 'active',
+              isPro: true,
+              is_founding_member: Boolean(ent.is_founding),
+              subscription_status: ent.tier || 'lifetime_founding',
+              device_count: 1,
+              max_devices: 2,
+              user: { email: ent.email || 'Founding Broadcaster' },
+            });
+          }
+        }
+
+        // Webhook hasn't landed yet? Query Stripe API on demand
+        const stripeRes = await retrieveCheckoutSession(rawToken);
+        if (stripeRes.ok && stripeRes.session && stripeRes.session.payment_status === 'paid') {
+          const s = stripeRes.session;
+          const isLifetime = s.metadata?.tier === 'lifetime_founding' || s.mode === 'payment';
+          const subStatus = isLifetime ? 'lifetime_founding' : 'pro';
+          const customerEmail = s.customer_details?.email || s.customer_email || '';
+
+          fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({
+              email: customerEmail.toLowerCase(),
+              tier: subStatus,
+              is_founding: isLifetime,
+              stripe_session_id: rawToken,
+            }),
+          }).catch(() => {});
+
+          return sendJson(res, 200, {
+            ok: true,
+            allowed: true,
+            status: 'active',
+            isPro: true,
+            is_founding_member: isLifetime,
+            subscription_status: subStatus,
+            device_count: 1,
+            max_devices: 2,
+            user: { email: customerEmail || 'Founding Broadcaster' },
+          });
+        }
+      } catch (err) {
+        console.warn('[auth/device-check] Error verifying prepaid Stripe session token:', err);
+      }
+    }
+
+    const { user, error: authError } = await verifySession(authHeader);
+    if (authError || !user) {
+      return sendJson(res, 401, {
+        ok: false,
+        error: 'UNAUTHORIZED',
+        message: authError || 'Invalid or expired session token',
+      });
+    }
+
+    const entitlement = await checkDeviceAndEntitlement(user.id, hwid, deviceName);
+    if (!entitlement.allowed) {
+      if (entitlement.error === 'device_limit_reached') {
+        return sendJson(res, 403, {
+          ok: false,
+          error: 'DEVICE_LIMIT_REACHED',
+          message: 'Device limit reached (max 2 active devices). Deactivate a machine at https://simple-streamer.bdjlmn.com/account',
+          ...entitlement,
+        });
+      }
+      return sendJson(res, 403, {
+        ok: false,
+        error: entitlement.error || 'DEVICE_CHECK_FAILED',
+        message: `Device check failed: ${entitlement.error}`,
+        ...entitlement,
+      });
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+      },
+      ...entitlement,
+    });
+  }
+
+  // Cloud Presets Synchronization Endpoints (Pro 2-Device Multi-Machine Sync)
+  if (pathname === '/presets/cloud') {
+    const authHeader = req.headers['authorization'] || '';
+    if (!authHeader) {
+      return sendJson(res, 401, {
+        ok: false,
+        error: 'UNAUTHORIZED',
+        message: 'Missing Authorization header for cloud preset sync',
+      });
+    }
+
+    const rawToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Direct Stripe Checkout Session instant activation (activates OBS before account registration)
+    if (rawToken.startsWith('cs_')) {
+      try {
+        const entRes = await fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements?stripe_session_id=eq.${encodeURIComponent(rawToken)}&select=*`, {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        });
+        if (entRes.ok) {
+          const rows = await entRes.json();
+          if (rows && rows.length > 0) {
+            const ent = rows[0];
+            return sendJson(res, 200, {
+              ok: true,
+              allowed: true,
+              status: 'active',
+              isPro: true,
+              is_founding_member: Boolean(ent.is_founding),
+              subscription_status: ent.tier || 'lifetime_founding',
+              device_count: 1,
+              max_devices: 2,
+              user: { email: ent.email || 'Founding Broadcaster' },
+            });
+          }
+        }
+
+        // Webhook hasn't landed yet? Query Stripe API on demand
+        const stripeRes = await retrieveCheckoutSession(rawToken);
+        if (stripeRes.ok && stripeRes.session && stripeRes.session.payment_status === 'paid') {
+          const s = stripeRes.session;
+          const isLifetime = s.metadata?.tier === 'lifetime_founding' || s.mode === 'payment';
+          const subStatus = isLifetime ? 'lifetime_founding' : 'pro';
+          const customerEmail = s.customer_details?.email || s.customer_email || '';
+
+          fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({
+              email: customerEmail.toLowerCase(),
+              tier: subStatus,
+              is_founding: isLifetime,
+              stripe_session_id: rawToken,
+            }),
+          }).catch(() => {});
+
+          return sendJson(res, 200, {
+            ok: true,
+            allowed: true,
+            status: 'active',
+            isPro: true,
+            is_founding_member: isLifetime,
+            subscription_status: subStatus,
+            device_count: 1,
+            max_devices: 2,
+            user: { email: customerEmail || 'Founding Broadcaster' },
+          });
+        }
+      } catch (err) {
+        console.warn('[auth/device-check] Error verifying prepaid Stripe session token:', err);
+      }
+    }
+
+    const { user, error: authError } = await verifySession(authHeader);
+    if (authError || !user) {
+      return sendJson(res, 401, {
+        ok: false,
+        error: 'UNAUTHORIZED',
+        message: authError || 'Invalid session token',
+      });
+    }
+
+    if (req.method === 'GET') {
+      const presets = await getUserPresets(user.id);
+      return sendJson(res, 200, { ok: true, presets });
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const incoming = Array.isArray(body?.presets) ? body.presets : [];
+        const existing = await getUserPresets(user.id);
+        const merged = mergePresets(existing, incoming);
+        await saveUserPresets(user.id, merged);
+        return sendJson(res, 200, { ok: true, presets: merged });
+      } catch (err) {
+        return sendJson(res, 400, { ok: false, error: err.message });
+      }
+    }
+  }
+
   // List YouTube live streams for dropdown (Supports POST with refreshToken or GET fallback)
   if ((req.method === 'GET' || req.method === 'POST') && pathname === '/api/youtube-streams') {
     try {
@@ -807,6 +1242,345 @@ function renderAuthErrorHtml(title, message) {
       const streams = await fetchYouTubeStreams(token);
       return sendJson(res, 200, { streams });
     } catch (err) {
+      return sendJson(res, 500, { error: err.message });
+    }
+  }
+
+  // 1. Stripe Checkout Session Creation
+  if (req.method === 'POST' && pathname === '/api/create-checkout-session') {
+    try {
+      const authHeader = req.headers['authorization'] || '';
+      if (!authHeader) {
+        return sendJson(res, 401, { error: 'UNAUTHORIZED', message: 'Missing Authorization header' });
+      }
+
+      const rawToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Direct Stripe Checkout Session instant activation (activates OBS before account registration)
+    if (rawToken.startsWith('cs_')) {
+      try {
+        const entRes = await fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements?stripe_session_id=eq.${encodeURIComponent(rawToken)}&select=*`, {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        });
+        if (entRes.ok) {
+          const rows = await entRes.json();
+          if (rows && rows.length > 0) {
+            const ent = rows[0];
+            return sendJson(res, 200, {
+              ok: true,
+              allowed: true,
+              status: 'active',
+              isPro: true,
+              is_founding_member: Boolean(ent.is_founding),
+              subscription_status: ent.tier || 'lifetime_founding',
+              device_count: 1,
+              max_devices: 2,
+              user: { email: ent.email || 'Founding Broadcaster' },
+            });
+          }
+        }
+
+        // Webhook hasn't landed yet? Query Stripe API on demand
+        const stripeRes = await retrieveCheckoutSession(rawToken);
+        if (stripeRes.ok && stripeRes.session && stripeRes.session.payment_status === 'paid') {
+          const s = stripeRes.session;
+          const isLifetime = s.metadata?.tier === 'lifetime_founding' || s.mode === 'payment';
+          const subStatus = isLifetime ? 'lifetime_founding' : 'pro';
+          const customerEmail = s.customer_details?.email || s.customer_email || '';
+
+          fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({
+              email: customerEmail.toLowerCase(),
+              tier: subStatus,
+              is_founding: isLifetime,
+              stripe_session_id: rawToken,
+            }),
+          }).catch(() => {});
+
+          return sendJson(res, 200, {
+            ok: true,
+            allowed: true,
+            status: 'active',
+            isPro: true,
+            is_founding_member: isLifetime,
+            subscription_status: subStatus,
+            device_count: 1,
+            max_devices: 2,
+            user: { email: customerEmail || 'Founding Broadcaster' },
+          });
+        }
+      } catch (err) {
+        console.warn('[auth/device-check] Error verifying prepaid Stripe session token:', err);
+      }
+    }
+
+    const { user, error: authError } = await verifySession(authHeader);
+      if (authError || !user) {
+        return sendJson(res, 401, { error: 'UNAUTHORIZED', message: authError || 'Invalid session' });
+      }
+
+      const body = await parseJsonBody(req);
+      const returnUrl = body.returnUrl || 'https://simple-streamer.bdjlmn.com/account';
+
+      const checkout = await createCheckoutSession({
+        userId: user.id,
+        userEmail: user.email,
+        returnUrl,
+      });
+
+      if (!checkout.ok) {
+        return sendJson(res, 400, { error: checkout.error });
+      }
+
+      return sendJson(res, 200, { url: checkout.url, id: checkout.id });
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message });
+    }
+  }
+
+  // 2. Stripe Customer Portal Session Creation
+  if (req.method === 'POST' && pathname === '/api/create-portal-session') {
+    try {
+      const authHeader = req.headers['authorization'] || '';
+      if (!authHeader) {
+        return sendJson(res, 401, { error: 'UNAUTHORIZED', message: 'Missing Authorization header' });
+      }
+
+      const rawToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Direct Stripe Checkout Session instant activation (activates OBS before account registration)
+    if (rawToken.startsWith('cs_')) {
+      try {
+        const entRes = await fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements?stripe_session_id=eq.${encodeURIComponent(rawToken)}&select=*`, {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        });
+        if (entRes.ok) {
+          const rows = await entRes.json();
+          if (rows && rows.length > 0) {
+            const ent = rows[0];
+            return sendJson(res, 200, {
+              ok: true,
+              allowed: true,
+              status: 'active',
+              isPro: true,
+              is_founding_member: Boolean(ent.is_founding),
+              subscription_status: ent.tier || 'lifetime_founding',
+              device_count: 1,
+              max_devices: 2,
+              user: { email: ent.email || 'Founding Broadcaster' },
+            });
+          }
+        }
+
+        // Webhook hasn't landed yet? Query Stripe API on demand
+        const stripeRes = await retrieveCheckoutSession(rawToken);
+        if (stripeRes.ok && stripeRes.session && stripeRes.session.payment_status === 'paid') {
+          const s = stripeRes.session;
+          const isLifetime = s.metadata?.tier === 'lifetime_founding' || s.mode === 'payment';
+          const subStatus = isLifetime ? 'lifetime_founding' : 'pro';
+          const customerEmail = s.customer_details?.email || s.customer_email || '';
+
+          fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({
+              email: customerEmail.toLowerCase(),
+              tier: subStatus,
+              is_founding: isLifetime,
+              stripe_session_id: rawToken,
+            }),
+          }).catch(() => {});
+
+          return sendJson(res, 200, {
+            ok: true,
+            allowed: true,
+            status: 'active',
+            isPro: true,
+            is_founding_member: isLifetime,
+            subscription_status: subStatus,
+            device_count: 1,
+            max_devices: 2,
+            user: { email: customerEmail || 'Founding Broadcaster' },
+          });
+        }
+      } catch (err) {
+        console.warn('[auth/device-check] Error verifying prepaid Stripe session token:', err);
+      }
+    }
+
+    const { user, error: authError } = await verifySession(authHeader);
+      if (authError || !user) {
+        return sendJson(res, 401, { error: 'UNAUTHORIZED', message: authError || 'Invalid session' });
+      }
+
+      const body = await parseJsonBody(req);
+      const customerId = body.customerId;
+      const returnUrl = body.returnUrl || 'https://simple-streamer.bdjlmn.com/account';
+
+      const portal = await createCustomerPortalSession({
+        customerId,
+        returnUrl,
+      });
+
+      if (!portal.ok) {
+        return sendJson(res, 400, { error: portal.error });
+      }
+
+      return sendJson(res, 200, { url: portal.url });
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message });
+    }
+  }
+
+  // 3. Stripe Webhook Listener
+  if (req.method === 'POST' && pathname === '/api/webhooks/stripe') {
+    try {
+      const sig = req.headers['stripe-signature'];
+      const secret = process.env.STRIPE_WEBHOOK_SECRET;
+
+      const rawBody = await readRawBody(req);
+
+      if (secret && secret !== 'whsec_replace_with_your_webhook_secret') {
+        const isValid = verifyStripeSignature(rawBody, sig, secret);
+        if (!isValid) {
+          console.error('[Stripe Webhook] Invalid signature rejected');
+          return sendJson(res, 400, { error: 'Invalid webhook signature' });
+        }
+      } else {
+        console.warn('[Stripe Webhook] STRIPE_WEBHOOK_SECRET not configured or in template state');
+      }
+
+      const event = JSON.parse(rawBody);
+      console.log(`[Stripe Webhook] Received event: ${event.type}`);
+
+      // Handle successful purchase / subscription start
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const userId = session.client_reference_id || session.metadata?.supabase_user_id;
+        const customerEmail = session.customer_details?.email || session.customer_email;
+        const isLifetime = session.metadata?.tier === 'lifetime_founding' || session.mode === 'payment';
+        const subStatus = isLifetime ? 'lifetime_founding' : 'pro';
+
+        const updateData = {
+          subscription_status: subStatus,
+          is_founding_member: isLifetime,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (customerEmail) {
+          try {
+            await fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements`, {
+              method: 'POST',
+              headers: {
+                apikey: SUPABASE_SERVICE_ROLE_KEY,
+                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates',
+              },
+              body: JSON.stringify({
+                email: customerEmail.toLowerCase(),
+                tier: subStatus,
+                is_founding: isLifetime,
+                stripe_session_id: session.id,
+              }),
+            });
+            console.log(`[Stripe Webhook] Recorded prepaid entitlement for ${customerEmail} (tier=${subStatus})`);
+          } catch (e) {
+            console.error('[Stripe Webhook] Error recording prepaid entitlement:', e);
+          }
+        }
+
+        if (userId) {
+          console.log(`[Stripe Webhook] Granting ${subStatus} entitlement to user=${userId}`);
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+            method: 'PATCH',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(updateData),
+          });
+        } else if (customerEmail) {
+          console.log(`[Stripe Webhook] Granting ${subStatus} entitlement by email=${customerEmail}`);
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(customerEmail)}`, {
+            method: 'PATCH',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(updateData),
+          });
+        }
+      }
+
+      // Handle subscription cancellation or expiration
+      if (event.type === 'customer.subscription.deleted') {
+        const sub = event.data.object;
+        const userId = sub.metadata?.supabase_user_id;
+
+        if (userId) {
+          console.log(`[Stripe Webhook] Revoking Pro entitlement for user=${userId}`);
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+            method: 'PATCH',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              subscription_status: 'free',
+              updated_at: new Date().toISOString(),
+            }),
+          });
+        }
+      }
+
+      // Handle subscription status changes (e.g. past_due, unpaid, active)
+      if (event.type === 'customer.subscription.updated') {
+        const sub = event.data.object;
+        const userId = sub.metadata?.supabase_user_id;
+        const status = sub.status === 'active' || sub.status === 'trialing' ? 'pro' : 'free';
+
+        if (userId) {
+          console.log(`[Stripe Webhook] Updating subscription_status=${status} for user=${userId}`);
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+            method: 'PATCH',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              subscription_status: status,
+              updated_at: new Date().toISOString(),
+            }),
+          });
+        }
+      }
+
+      return sendJson(res, 200, { received: true });
+    } catch (err) {
+      console.error('[Stripe Webhook] Error:', err.message);
       return sendJson(res, 500, { error: err.message });
     }
   }
@@ -840,6 +1614,8 @@ function renderAuthErrorHtml(title, message) {
         result = await validateTwitchChannel(target);
       } else if (target.platform === 'kick') {
         result = await validateKickChannel(target);
+      } else if (target.platform === 'custom') {
+        result = { valid: true, serverUrl: target.serverUrl, streamKey: target.streamKey, name: target.name || 'Custom RTMP' };
       }
 
       return sendJson(res, 200, result);
@@ -864,6 +1640,7 @@ function renderAuthErrorHtml(title, message) {
           else if (target.platform === 'facebook') resObj = await validateFacebookPage(target);
           else if (target.platform === 'twitch') resObj = await validateTwitchChannel(target);
           else if (target.platform === 'kick') resObj = await validateKickChannel(target);
+          else if (target.platform === 'custom') resObj = { valid: true, serverUrl: target.serverUrl, streamKey: target.streamKey, name: target.name || 'Custom RTMP' };
           return { id: raw.id, platform: raw.platform, ...resObj };
         } catch (e) {
           return { id: raw.id, platform: raw.platform, valid: false, error: e.message };
@@ -967,10 +1744,176 @@ function renderAuthErrorHtml(title, message) {
       });
     }
 
+    // Enforce Supabase Pro entitlement & hardware device limits for automated YouTube & Facebook sync
+    let validatedUserId = null;
+    if (isAutomatedOAuthRequested(body)) {
+      const authHeader = req.headers['authorization'] || (body.token ? `Bearer ${body.token}` : '');
+      const hwid = (req.headers['x-device-hwid'] || body.hwid || body.deviceHwid || '').trim();
+      const deviceName = req.headers['x-device-name'] || body.deviceName || 'Simple Streamer Desktop';
+
+      if (!authHeader) {
+        return sendJson(res, 403, {
+          error: 'PRO_REQUIRED',
+          message: 'Automated YouTube & Facebook live sync requires Simple Streamer Pro. Switch to Stream Key mode or log in to a Pro account.',
+        });
+      }
+
+      if (!hwid || hwid.length < 8 || hwid === 'default-hwid') {
+        return sendJson(res, 403, {
+          error: 'DEVICE_IDENTIFIER_REQUIRED',
+          message: 'Valid hardware device identifier (min 8 characters) required for multi-platform broadcasting.',
+        });
+      }
+
+      const rawToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Direct Stripe Checkout Session instant activation (activates OBS before account registration)
+    if (rawToken.startsWith('cs_')) {
+      try {
+        const entRes = await fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements?stripe_session_id=eq.${encodeURIComponent(rawToken)}&select=*`, {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        });
+        if (entRes.ok) {
+          const rows = await entRes.json();
+          if (rows && rows.length > 0) {
+            const ent = rows[0];
+            return sendJson(res, 200, {
+              ok: true,
+              allowed: true,
+              status: 'active',
+              isPro: true,
+              is_founding_member: Boolean(ent.is_founding),
+              subscription_status: ent.tier || 'lifetime_founding',
+              device_count: 1,
+              max_devices: 2,
+              user: { email: ent.email || 'Founding Broadcaster' },
+            });
+          }
+        }
+
+        // Webhook hasn't landed yet? Query Stripe API on demand
+        const stripeRes = await retrieveCheckoutSession(rawToken);
+        if (stripeRes.ok && stripeRes.session && stripeRes.session.payment_status === 'paid') {
+          const s = stripeRes.session;
+          const isLifetime = s.metadata?.tier === 'lifetime_founding' || s.mode === 'payment';
+          const subStatus = isLifetime ? 'lifetime_founding' : 'pro';
+          const customerEmail = s.customer_details?.email || s.customer_email || '';
+
+          fetch(`${SUPABASE_URL}/rest/v1/prepaid_entitlements`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({
+              email: customerEmail.toLowerCase(),
+              tier: subStatus,
+              is_founding: isLifetime,
+              stripe_session_id: rawToken,
+            }),
+          }).catch(() => {});
+
+          return sendJson(res, 200, {
+            ok: true,
+            allowed: true,
+            status: 'active',
+            isPro: true,
+            is_founding_member: isLifetime,
+            subscription_status: subStatus,
+            device_count: 1,
+            max_devices: 2,
+            user: { email: customerEmail || 'Founding Broadcaster' },
+          });
+        }
+      } catch (err) {
+        console.warn('[auth/device-check] Error verifying prepaid Stripe session token:', err);
+      }
+    }
+
+    const { user, error: authError } = await verifySession(authHeader);
+      if (authError || !user) {
+        console.warn(`[Orchestrator] Session verification failed: ${authError || 'Unknown error'}`);
+        return sendJson(res, 403, {
+          error: 'PRO_REQUIRED',
+          message: 'Automated YouTube & Facebook live sync requires Simple Streamer Pro. Switch to Stream Key mode or log in to a Pro account.',
+        });
+      }
+
+      const entitlement = await checkDeviceAndEntitlement(user.id, hwid, deviceName);
+      if (!entitlement.allowed) {
+        if (entitlement.error === 'device_limit_reached') {
+          return sendJson(res, 403, {
+            error: 'DEVICE_LIMIT_REACHED',
+            message: 'Device limit reached (max 2 active devices). Deactivate a machine at https://simple-streamer.bdjlmn.com/account',
+            device_count: entitlement.device_count,
+            max_devices: entitlement.max_devices,
+          });
+        }
+        if (entitlement.error === 'invalid_hwid') {
+          return sendJson(res, 403, {
+            error: 'DEVICE_IDENTIFIER_REQUIRED',
+            message: entitlement.message || 'Valid hardware device identifier required.',
+          });
+        }
+        return sendJson(res, 403, {
+          error: 'PRO_REQUIRED',
+          message: 'Automated YouTube & Facebook live sync requires Simple Streamer Pro. Switch to Stream Key mode or log in to a Pro account.',
+        });
+      }
+
+      if (!entitlement.isPro) {
+        return sendJson(res, 403, {
+          error: 'PRO_REQUIRED',
+          message: 'Automated YouTube & Facebook live sync requires Simple Streamer Pro. Switch to Stream Key mode or log in to a Pro account.',
+          subscription_status: entitlement.subscription_status,
+        });
+      }
+
+      validatedUserId = user.id;
+      console.log(`[Orchestrator] Pro authorized: user=${user.email || user.id} (${entitlement.subscription_status}) on device=${hwid || 'default'}`);
+    }
+
+    // Anti-Spam & Quota Protection: Max 5 broadcast creations per 5 minutes per user / IP
+    const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const rateLimitKey = validatedUserId ? `user:${validatedUserId}` : `ip:${clientIp}`;
+    const rateCheck = checkRateLimit(rateLimitKey, 5, 5 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      res.setHeader('Retry-After', String(rateCheck.retryAfter));
+      return sendJson(res, 429, {
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: `Broadcast creation limit reached (maximum 5 requests per 5 minutes). Please wait ${rateCheck.retryAfter}s before starting another stream.`,
+        retryAfter: rateCheck.retryAfter,
+      });
+    }
+
     // Resolve title and description (strictly user input with zero boilerplate)
     const cleanTitle = rawTitle.replace(/[\r\n]+/g, ' ').trim();
     const finalTitle = cleanTitle;
     const finalDescription = notes;
+
+    // Ephemeral thumbnail buffer extraction (never persisted to disk or session state)
+    let thumbnailBuffer = null;
+    let thumbnailMimeType = 'image/jpeg';
+    const rawThumb = body.thumbnailBase64 || body.thumbnail;
+    if (rawThumb && typeof rawThumb === 'string') {
+      try {
+        const matches = rawThumb.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          thumbnailMimeType = matches[1];
+          thumbnailBuffer = Buffer.from(matches[2], 'base64');
+        } else {
+          thumbnailBuffer = Buffer.from(rawThumb, 'base64');
+        }
+        console.log(`[Orchestrator] Ephemeral thumbnail decoded (${thumbnailBuffer.length} bytes, ${thumbnailMimeType})`);
+      } catch (err) {
+        console.warn('[Orchestrator] Failed to parse thumbnailBase64:', err.message);
+      }
+    }
 
     console.log(`[Orchestrator] Starting broadcast: "${finalTitle}"`);
 
@@ -981,6 +1924,16 @@ function renderAuthErrorHtml(title, message) {
         const d = { ...(rawD.credentials || {}), ...rawD };
         try {
           if (d.platform === 'facebook') {
+            if (!d.accessToken && d.streamKey) {
+              return {
+                id: d.id,
+                platform: 'facebook',
+                name: d.name,
+                ok: true,
+                serverUrl: d.serverUrl || 'rtmps://live-api-s.facebook.com:443/rtmp/',
+                streamKey: d.streamKey,
+              };
+            }
             const fbTitle = finalTitle.slice(0, 255);
             const fbRes = await createFacebookLiveVideo({
               title: fbTitle,
@@ -988,6 +1941,20 @@ function renderAuthErrorHtml(title, message) {
               pageId: d.pageId,
               accessToken: d.accessToken,
             });
+
+            // Dispatch ephemeral thumbnail if provided
+            if (fbRes.liveVideoId && thumbnailBuffer) {
+              setFacebookThumbnail({
+                liveVideoId: fbRes.liveVideoId,
+                imageBuffer: thumbnailBuffer,
+                mimeType: thumbnailMimeType,
+                accessToken: d.accessToken,
+              }).then((tRes) => {
+                if (tRes.ok) console.log(`[Orchestrator] Facebook custom thumbnail uploaded for ${fbRes.liveVideoId}`);
+                else console.warn(`[Orchestrator] Facebook thumbnail warning: ${tRes.error}`);
+              }).catch((e) => console.warn(`[Orchestrator] Facebook thumbnail error: ${e.message}`));
+            }
+
             return {
               id: d.id,
               platform: 'facebook',
@@ -998,6 +1965,16 @@ function renderAuthErrorHtml(title, message) {
               streamKey: fbRes.streamKey,
             };
           } else if (d.platform === 'youtube') {
+            if (!d.refreshToken && d.streamKey) {
+              return {
+                id: d.id,
+                platform: 'youtube',
+                name: d.name,
+                ok: true,
+                serverUrl: d.serverUrl || d.ingestionAddress || 'rtmp://a.rtmp.youtube.com/live2',
+                streamKey: d.streamKey,
+              };
+            }
             const ytTitle = finalTitle.slice(0, 100);
             const ytRes = await createYouTubeBroadcast({
               title: ytTitle,
@@ -1006,6 +1983,21 @@ function renderAuthErrorHtml(title, message) {
               streamId: d.streamId,
               privacyStatus: d.privacyStatus || 'public',
             });
+
+            // Dispatch ephemeral thumbnail if provided
+            if (ytRes.broadcastId && thumbnailBuffer) {
+              setYouTubeThumbnail({
+                refreshToken: d.refreshToken,
+                videoId: ytRes.broadcastId,
+                imageBuffer: thumbnailBuffer,
+                mimeType: thumbnailMimeType,
+              }).then((tRes) => {
+                if (tRes.ok) console.log(`[Orchestrator] YouTube custom thumbnail uploaded for ${ytRes.broadcastId}`);
+                else if (tRes.skipped) console.warn(`[Orchestrator] YouTube thumbnail skipped (${tRes.reason}): ${tRes.error}`);
+                else console.warn(`[Orchestrator] YouTube thumbnail warning: ${tRes.error}`);
+              }).catch((e) => console.warn(`[Orchestrator] YouTube thumbnail error: ${e.message}`));
+            }
+
             return {
               id: d.id,
               platform: 'youtube',
@@ -1077,6 +2069,15 @@ function renderAuthErrorHtml(title, message) {
               serverUrl: kickServer,
               streamKey: d.streamKey,
             };
+          } else if (d.platform === 'custom' || d.platform === 'rtmp' || d.streamKey) {
+            return {
+              id: d.id,
+              platform: d.platform,
+              name: d.name,
+              ok: true,
+              serverUrl: d.serverUrl || '',
+              streamKey: d.streamKey,
+            };
           }
           return { id: d.id, platform: d.platform, ok: false, error: 'Unknown platform' };
         } catch (err) {
@@ -1113,6 +2114,15 @@ function renderAuthErrorHtml(title, message) {
           privacyStatus: ytConfig.privacyStatus || 'public',
         }).then((res) => ({ type: 'youtube', ...res }))
       );
+    } else if (ytConfig?.streamKey) {
+      executions.push(
+        Promise.resolve({
+          type: 'youtube',
+          ok: true,
+          serverUrl: ytConfig.serverUrl || 'rtmp://a.rtmp.youtube.com/live2',
+          streamKey: ytConfig.streamKey,
+        })
+      );
     } else {
       executions.push(Promise.resolve({ type: 'youtube', skipped: true }));
     }
@@ -1126,6 +2136,15 @@ function renderAuthErrorHtml(title, message) {
           pageId: fbConfig.pageId,
           accessToken: fbConfig.accessToken,
         }).then((res) => ({ type: 'facebook', ...res }))
+      );
+    } else if (fbConfig?.streamKey) {
+      executions.push(
+        Promise.resolve({
+          type: 'facebook',
+          ok: true,
+          serverUrl: fbConfig.serverUrl || 'rtmps://live-api-s.facebook.com:443/rtmp/',
+          streamKey: fbConfig.streamKey,
+        })
       );
     } else {
       executions.push(Promise.resolve({ type: 'facebook', skipped: true }));
@@ -1268,6 +2287,32 @@ function renderAuthErrorHtml(title, message) {
       return sendJson(res, 400, { error: 'Missing title or destinations array.' });
     }
 
+    // Mid-stream title and description updates require an active Pro license
+    const authHeader = req.headers['authorization'] || (body.token ? `Bearer ${body.token}` : '');
+    if (!authHeader) {
+      return sendJson(res, 403, {
+        error: 'PRO_REQUIRED',
+        message: 'Mid-stream title updates require Simple Streamer Pro.',
+      });
+    }
+
+    const { user, error: authError } = await verifySession(authHeader);
+    if (authError || !user) {
+      return sendJson(res, 403, {
+        error: 'PRO_REQUIRED',
+        message: 'Mid-stream title updates require Simple Streamer Pro.',
+      });
+    }
+
+    const hwid = (req.headers['x-device-hwid'] || body.hwid || '').trim();
+    const entitlement = await checkDeviceAndEntitlement(user.id, hwid);
+    if (!entitlement.isPro) {
+      return sendJson(res, 403, {
+        error: 'PRO_REQUIRED',
+        message: 'Mid-stream title updates require Simple Streamer Pro.',
+      });
+    }
+
     console.log(`[Watchdog] Reconciling metadata for "${title}" across ${destinations.length} destination(s)...`);
 
     const reconciliationPromises = destinations.map(async (rawD) => {
@@ -1310,6 +2355,66 @@ function renderAuthErrorHtml(title, message) {
     });
 
     const results = await Promise.all(reconciliationPromises);
+    return sendJson(res, 200, { ok: true, results });
+  }
+
+  // Standalone thumbnail upload endpoint for active live sessions
+  if (req.method === 'POST' && pathname === '/set-thumbnail') {
+    let body;
+    try {
+      body = await parseJsonBody(req);
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+
+    const { thumbnailBase64, destinations } = body;
+    if (!thumbnailBase64 || !Array.isArray(destinations) || destinations.length === 0) {
+      return sendJson(res, 400, { error: 'Missing thumbnailBase64 or destinations array.' });
+    }
+
+    let thumbnailBuffer = null;
+    let thumbnailMimeType = 'image/jpeg';
+    try {
+      const matches = thumbnailBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        thumbnailMimeType = matches[1];
+        thumbnailBuffer = Buffer.from(matches[2], 'base64');
+      } else {
+        thumbnailBuffer = Buffer.from(thumbnailBase64, 'base64');
+      }
+    } catch (err) {
+      return sendJson(res, 400, { error: `Invalid thumbnail base64 data: ${err.message}` });
+    }
+
+    console.log(`[Thumbnail] Setting custom thumbnail across ${destinations.length} destination(s)...`);
+
+    const thumbPromises = destinations.map(async (rawD) => {
+      const d = { ...(rawD.credentials || {}), ...rawD };
+      try {
+        if (d.platform === 'youtube' && (d.broadcastId || d.videoId)) {
+          const res = await setYouTubeThumbnail({
+            videoId: d.broadcastId || d.videoId,
+            refreshToken: d.refreshToken,
+            imageBuffer: thumbnailBuffer,
+            mimeType: thumbnailMimeType,
+          });
+          return { id: d.id, platform: 'youtube', ...res };
+        } else if (d.platform === 'facebook' && (d.liveVideoId || d.videoId)) {
+          const res = await setFacebookThumbnail({
+            liveVideoId: d.liveVideoId || d.videoId,
+            imageBuffer: thumbnailBuffer,
+            mimeType: thumbnailMimeType,
+            accessToken: d.accessToken,
+          });
+          return { id: d.id, platform: 'facebook', ...res };
+        }
+        return { id: d.id, platform: d.platform, ok: true, skipped: true, reason: 'unsupported_or_dynamic' };
+      } catch (err) {
+        return { id: d.id, platform: d.platform, ok: false, error: err.message };
+      }
+    });
+
+    const results = await Promise.all(thumbPromises);
     return sendJson(res, 200, { ok: true, results });
   }
 

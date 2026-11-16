@@ -11,13 +11,35 @@ const KICK_DEFAULT_RTMP = 'rtmps://fa723ac112e7.global-contribute.live-video.net
  *
  * @param {Object} params
  * @param {string} [params.userToken] OAuth User Access Token
+ * @param {string} [params.refreshToken] OAuth Refresh Token
  * @param {string} [params.streamKey] Permanent Kick Stream Key
  * @param {string} [params.channelSlug] Kick Channel Slug (username)
- * @returns {Promise<{ valid: boolean, serverUrl: string, streamKey?: string, name?: string, error?: string }>}
+ * @param {string} [params.clientId] Kick Client ID
+ * @param {string} [params.clientSecret] Kick Client Secret
+ * @returns {Promise<{ valid: boolean, serverUrl: string, streamKey?: string, name?: string, userToken?: string, refreshToken?: string, error?: string }>}
  */
-export async function validateKickChannel({ userToken, streamKey, channelSlug }) {
-  // If user provided a stream key manually
-  if (streamKey && !userToken) {
+export async function validateKickChannel({
+  userToken,
+  refreshToken,
+  streamKey,
+  channelSlug,
+  clientId = process.env.KICK_CLIENT_ID,
+  clientSecret = process.env.KICK_CLIENT_SECRET,
+}) {
+  let activeToken = userToken;
+  let activeRefreshToken = refreshToken;
+
+  // If token is missing but refresh token exists, refresh first
+  if (!activeToken && activeRefreshToken) {
+    const refreshed = await refreshKickToken({ refreshToken: activeRefreshToken, clientId, clientSecret });
+    if (refreshed) {
+      activeToken = refreshed.userToken;
+      activeRefreshToken = refreshed.refreshToken;
+    }
+  }
+
+  // If user provided a stream key manually without tokens
+  if (streamKey && !activeToken && !activeRefreshToken) {
     if (!streamKey.startsWith('sk_') && streamKey.length < 10) {
       return { valid: false, error: 'Kick stream key appears malformed. Find it in Kick Creator Dashboard -> Stream Settings.' };
     }
@@ -29,38 +51,82 @@ export async function validateKickChannel({ userToken, streamKey, channelSlug })
     };
   }
 
-  // If user linked via OAuth
-  if (userToken) {
-    try {
-      const res = await fetch(`${KICK_API_BASE}/channels`, {
-        headers: {
-          Authorization: `Bearer ${userToken}`,
-        },
-      });
-
-      if (!res.ok) {
-        return { valid: false, error: `Kick authentication expired (${res.status}). Please reconnect.` };
-      }
-
-      const data = await res.json();
-      const channel = data.data?.[0] || data.data || data;
-      const resolvedKey = channel.stream?.key || channel.stream_key || streamKey || '';
-      let resolvedServer = channel.stream?.url || KICK_DEFAULT_RTMP;
-      if (resolvedServer && !resolvedServer.includes('/app')) {
-        resolvedServer = resolvedServer.replace(/\/+$/, '') + ':443/app';
-      }
+  if (!activeToken && !activeRefreshToken) {
+    if (streamKey) {
       return {
         valid: true,
-        name: channel.slug || channel.name || channelSlug || 'Kick Channel',
-        serverUrl: resolvedServer,
-        streamKey: resolvedKey,
+        name: channelSlug || 'Kick Stream',
+        serverUrl: KICK_DEFAULT_RTMP,
+        streamKey,
       };
-    } catch (err) {
-      return { valid: false, error: err.message };
     }
+    return { valid: false, error: 'Missing Kick stream key or user token.' };
   }
 
-  return { valid: false, error: 'Missing Kick stream key or user token.' };
+  try {
+    let res = await fetch(`${KICK_API_BASE}/channels`, {
+      headers: {
+        Authorization: `Bearer ${activeToken}`,
+      },
+    });
+
+    // Auto-refresh token if 401 and refreshToken is present
+    if (!res.ok && activeRefreshToken) {
+      const refreshed = await refreshKickToken({ refreshToken: activeRefreshToken, clientId, clientSecret });
+      if (refreshed) {
+        activeToken = refreshed.userToken;
+        activeRefreshToken = refreshed.refreshToken;
+        res = await fetch(`${KICK_API_BASE}/channels`, {
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+          },
+        });
+      }
+    }
+
+    if (!res.ok) {
+      // If validation fails but permanent streamKey is present, stream is still 100% functional
+      if (streamKey) {
+        return {
+          valid: true,
+          name: channelSlug || 'Kick Stream',
+          serverUrl: KICK_DEFAULT_RTMP,
+          streamKey,
+          userToken: activeToken,
+          refreshToken: activeRefreshToken,
+        };
+      }
+      return { valid: false, error: `Kick authentication expired (${res.status}). Please reconnect.` };
+    }
+
+    const data = await res.json();
+    const channel = data.data?.[0] || data.data || data;
+    const resolvedKey = channel.stream?.key || channel.stream_key || streamKey || '';
+    let resolvedServer = channel.stream?.url || KICK_DEFAULT_RTMP;
+    if (resolvedServer && !resolvedServer.includes('/app')) {
+      resolvedServer = resolvedServer.replace(/\/+$/, '') + ':443/app';
+    }
+    return {
+      valid: true,
+      name: channel.slug || channel.name || channelSlug || 'Kick Channel',
+      serverUrl: resolvedServer,
+      streamKey: resolvedKey || streamKey,
+      userToken: activeToken,
+      refreshToken: activeRefreshToken,
+    };
+  } catch (err) {
+    if (streamKey) {
+      return {
+        valid: true,
+        name: channelSlug || 'Kick Stream',
+        serverUrl: KICK_DEFAULT_RTMP,
+        streamKey,
+        userToken: activeToken,
+        refreshToken: activeRefreshToken,
+      };
+    }
+    return { valid: false, error: err.message };
+  }
 }
 
 /**

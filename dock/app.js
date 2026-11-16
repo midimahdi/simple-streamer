@@ -1,4 +1,5 @@
 import { ObsWebSocketClient } from './obs-client.js';
+import { t, setLanguage, getLanguage, I18N } from './locales.js';
 
 // Platform SVG Icons (Clean & Scalable)
 const PLATFORM_ICONS = {
@@ -6,6 +7,7 @@ const PLATFORM_ICONS = {
   facebook: `<svg class="platform-svg fb" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>`,
   twitch: `<svg class="platform-svg twitch" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.149 0l-1.612 4.119v16.8h5.9v3.081h3.081l3.08-3.081h4.632l6.219-6.219V0H2.149zm19.231 13.638l-3.693 3.693h-5.228l-3.081 3.081v-3.081H4.632V2.149h16.748v11.489zm-4.632-6.529h-2.149v5.901h2.149V7.109zm-5.9 0H8.699v5.901h2.149V7.109z"/></svg>`,
   kick: `<svg class="platform-svg kick" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1.333 0h7.62v7.619h3.809V3.81h3.81V0h7.618v11.429h-3.81v3.809h3.81V24h-7.619v-3.81h-3.81v-3.809H8.952V24H1.333V0z"/></svg>`,
+  custom: `<svg class="platform-svg custom" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
 };
 
 const DEFAULT_CLOUD_BACKEND = 'https://simple-streamer.bdjlmn.com';
@@ -30,6 +32,7 @@ const state = {
   isRecording: false,
   isPreparing: false,
   isEnding: false,
+  ephemeralThumbnailBase64: null, // Strictly in-memory, never saved to localStorage (cleared on Go Live)
   timerInterval: null,
   metricsInterval: null,
   streamStartTime: null,
@@ -46,6 +49,13 @@ const state = {
     obsPass: localStorage.getItem('obs_orchestrator_ws_pass') || '',
     backendUrl: resolveBackendUrl(),
     apiKey: localStorage.getItem('obs_orchestrator_api_key') || '',
+  },
+  proOffer: {
+    dealActive: true,
+    ctaLabel: '⚡ Claim Lifetime Pass ($3 Once) ↗',
+    alertCtaLabel: 'LIFETIME PASS ($3) ↗',
+    paymentUrl: 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01',
+    expiresAt: null,
   },
   discoveryCallback: null,
   sessionPin: localStorage.getItem('simple_streamer_pin') || (() => {
@@ -69,6 +79,10 @@ const el = {
   alertTitle: document.getElementById('alertTitle'),
   alertMsg: document.getElementById('alertMsg'),
   alertActions: document.getElementById('alertActions'),
+  updateBanner: document.getElementById('updateBanner'),
+  updateBannerText: document.getElementById('updateBannerText'),
+  btnDownloadUpdate: document.getElementById('btnDownloadUpdate'),
+  btnCloseUpdateBanner: document.getElementById('btnCloseUpdateBanner'),
   liveContainer: document.getElementById('liveContainer'),
   liveHeader: document.getElementById('liveHeader'),
   liveTimer: document.getElementById('liveTimer'),
@@ -80,9 +94,50 @@ const el = {
   inputGroup: document.getElementById('inputGroup'),
   lessonTitle: document.getElementById('lessonTitle'),
   lessonDescription: document.getElementById('lessonDescription'),
+  titleCounter: document.getElementById('titleCounter'),
+  templateSelector: document.getElementById('templateSelector'),
+  thumbnailInput: document.getElementById('thumbnailInput'),
+  thumbnailDropzone: document.getElementById('thumbnailDropzone'),
+  thumbnailPrompt: document.getElementById('thumbnailPrompt'),
+  thumbnailPreviewContainer: document.getElementById('thumbnailPreviewContainer'),
+  thumbnailImgPreview: document.getElementById('thumbnailImgPreview'),
+  thumbnailClearBtn: document.getElementById('thumbnailClearBtn'),
   actionBtn: document.getElementById('actionBtn'),
   actionBtnText: document.getElementById('actionBtnText'),
   diagPanel: document.getElementById('diagPanel'),
+  langSelector: document.getElementById('langSelector'),
+
+  // Elgato-Style Navigation & Views
+  viewBroadcast: document.getElementById('viewBroadcast'),
+  viewSettings: document.getElementById('viewSettings'),
+  settingsLiveBar: document.getElementById('settingsLiveBar'),
+  settingsLiveTimer: document.getElementById('settingsLiveTimer'),
+  settingsMenu: document.getElementById('settingsMenu'),
+  btnMenuDestinations: document.getElementById('btnMenuDestinations'),
+  btnMenuRemote: document.getElementById('btnMenuRemote'),
+  btnMenuAccount: document.getElementById('btnMenuAccount'),
+  btnMenuGeneral: document.getElementById('btnMenuGeneral'),
+  subpageDestinations: document.getElementById('subpageDestinations'),
+  subpageRemote: document.getElementById('subpageRemote'),
+  subpageAccount: document.getElementById('subpageAccount'),
+  subpageGeneral: document.getElementById('subpageGeneral'),
+  destLockedNotice: document.getElementById('destLockedNotice'),
+  settingsDestCountSub: document.getElementById('settingsDestCountSub'),
+  settingsAccountPlanSub: document.getElementById('settingsAccountPlanSub'),
+  settingsAccountBadge: document.getElementById('settingsAccountBadge'),
+  obsWsStatusBadge: document.getElementById('obsWsStatusBadge'),
+  obsWsEndpointDisplay: document.getElementById('obsWsEndpointDisplay'),
+  btnReconnectObsSettings: document.getElementById('btnReconnectObsSettings'),
+  btnResetLocalData: document.getElementById('btnResetLocalData'),
+
+  // Account & License UI
+  btnHeaderAccount: document.getElementById('btnHeaderAccount'),
+  accountCard: document.getElementById('accountCard'),
+  accountBadge: document.getElementById('accountBadge'),
+  accountInfo: document.getElementById('accountInfo'),
+  accountActions: document.getElementById('accountActions'),
+  btnSignInAccount: document.getElementById('btnSignInAccount'),
+  btnLinkToken: document.getElementById('btnLinkToken'),
 
   // Remote Panel UI
   remotePanel: document.getElementById('remotePanel'),
@@ -111,6 +166,12 @@ const el = {
   btnAddFb: document.getElementById('btnAddFb'),
   btnAddTwitch: document.getElementById('btnAddTwitch'),
   btnAddKick: document.getElementById('btnAddKick'),
+  btnAddCustomRtmp: document.getElementById('btnAddCustomRtmp'),
+
+  // Mid-Stream Live Metadata Update Action Bar
+  liveMetadataUpdateBar: document.getElementById('liveMetadataUpdateBar'),
+  btnUpdateLiveMetadata: document.getElementById('btnUpdateLiveMetadata'),
+  btnUpdateLiveMetadataText: document.getElementById('btnUpdateLiveMetadataText'),
 };
 
 /**
@@ -129,37 +190,40 @@ function updateActionBtnState() {
   if (state.isStreaming) {
     el.actionBtn.disabled = false;
     el.actionBtn.className = 'btn-primary stop';
-    el.actionBtnText.textContent = '⏹ STOP STREAM';
+    el.actionBtnText.textContent = t('endBroadcast');
     return;
   }
 
   if (state.isPreparing) {
     el.actionBtn.disabled = true;
     el.actionBtn.className = 'btn-primary';
-    el.actionBtnText.textContent = 'PREPARING STREAM...';
+    el.actionBtnText.textContent = t('startingBroadcast');
     return;
   }
 
   if (state.isEnding) {
     el.actionBtn.disabled = true;
     el.actionBtn.className = 'btn-primary';
-    el.actionBtnText.textContent = 'ENDING STREAM...';
+    el.actionBtnText.textContent = t('stoppingBroadcast');
     return;
   }
 
   if (!state.obs.isConnected) {
     el.actionBtn.disabled = true;
     el.actionBtn.className = 'btn-primary';
-    el.actionBtnText.textContent = 'CONNECTING TO OBS...';
+    el.actionBtnText.textContent = t('connectingObs');
     return;
   }
 
   // Check destination readiness
+  const activePrimary = getActivePrimaryDestination();
   const enabledTargets = state.destinations.filter((d) => d.enabled);
+  // Sort so active runtime Primary platform is strictly Destination 0
+  enabledTargets.sort((a, b) => (b.id === activePrimary?.id ? 1 : 0) - (a.id === activePrimary?.id ? 1 : 0));
   if (enabledTargets.length === 0) {
     el.actionBtn.disabled = true;
     el.actionBtn.className = 'btn-primary';
-    el.actionBtnText.textContent = 'SELECT DESTINATION FIRST';
+    el.actionBtnText.textContent = t('selectDestFirst');
     return;
   }
 
@@ -167,14 +231,14 @@ function updateActionBtnState() {
   if (hasInvalid) {
     el.actionBtn.disabled = true;
     el.actionBtn.className = 'btn-primary';
-    el.actionBtnText.textContent = 'DESTINATION ERROR - CHECK SETTINGS';
+    el.actionBtnText.textContent = t('destError');
     return;
   }
 
   // Ready to stream
   el.actionBtn.disabled = false;
   el.actionBtn.className = 'btn-primary';
-  el.actionBtnText.textContent = '▶ GO LIVE';
+  el.actionBtnText.textContent = t('startBroadcast');
 }
 
 /**
@@ -186,13 +250,19 @@ function setStatus(text, type = 'connected') {
     el.statusBadge.className = `badge ${type}`;
   }
   updateActionBtnState();
+  updateGeneralSettingsUI();
 }
 
 /**
  * Show Alert Banner with optional action buttons
+ * @param {string} title
+ * @param {string} message
+ * @param {Array} actions
+ * @param {'info'|'success'|'warning'|'error'} type
  */
-function showAlert(title, message, actions = []) {
+function showAlert(title, message, actions = [], type = 'info') {
   if (!el.alertBox) return;
+  el.alertBox.className = `alert-box ${type}`;
   el.alertTitle.textContent = title;
   el.alertMsg.textContent = message;
   el.alertActions.innerHTML = '';
@@ -221,7 +291,840 @@ function showAlert(title, message, actions = []) {
 function clearAlert() {
   if (el.alertBox) {
     el.alertBox.style.display = 'none';
+    el.alertBox.className = 'alert-box';
     el.alertActions.innerHTML = '';
+  }
+}
+
+/**
+ * Custom Thumbnail Ephemeral Management
+ * Guarantees zero leakage into subsequent broadcasts.
+ */
+function clearThumbnail() {
+  state.ephemeralThumbnailBase64 = null;
+  if (el.thumbnailInput) el.thumbnailInput.value = '';
+  if (el.thumbnailImgPreview) el.thumbnailImgPreview.src = '';
+  if (el.thumbnailPreviewContainer) el.thumbnailPreviewContainer.style.display = 'none';
+  if (el.thumbnailPrompt) el.thumbnailPrompt.style.display = 'flex';
+  if (el.thumbnailClearBtn) el.thumbnailClearBtn.style.display = 'none';
+}
+
+async function processThumbnailFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    logDiag('Selected file is not an image');
+    return;
+  }
+
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1280;
+            canvas.height = 720;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
+            const targetAspect = 1280 / 720;
+            const sourceAspect = img.width / img.height;
+            let renderWidth, renderHeight, offsetX, offsetY;
+
+            if (sourceAspect > targetAspect) {
+              renderHeight = 720;
+              renderWidth = img.width * (720 / img.height);
+              offsetX = -(renderWidth - 1280) / 2;
+              offsetY = 0;
+            } else {
+              renderWidth = 1280;
+              renderHeight = img.height * (1280 / img.width);
+              offsetX = 0;
+              offsetY = -(renderHeight - 720) / 2;
+            }
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 1280, 720);
+            ctx.drawImage(img, offsetX, offsetY, renderWidth, renderHeight);
+
+            const compressed = canvas.toDataURL('image/jpeg', 0.82);
+            resolve(compressed);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error('Failed to load image preview'));
+        img.src = e.target.result;
+      };
+      reader.onerror = () => reject(new Error('Failed to read image file'));
+      reader.readAsDataURL(file);
+    });
+
+    state.ephemeralThumbnailBase64 = dataUrl;
+    if (el.thumbnailImgPreview) el.thumbnailImgPreview.src = dataUrl;
+    if (el.thumbnailPrompt) el.thumbnailPrompt.style.display = 'none';
+    if (el.thumbnailPreviewContainer) el.thumbnailPreviewContainer.style.display = 'block';
+    if (el.thumbnailClearBtn) el.thumbnailClearBtn.style.display = 'inline-block';
+    logDiag('Thumbnail auto-optimized to 720p progressive JPEG (<200KB)');
+  } catch (err) {
+    logDiag(`Thumbnail processing error: ${err.message}`);
+  }
+}
+
+/**
+ * -------------------------------------------------------------
+ * Title Guard & Dynamic Character Counter
+ * -------------------------------------------------------------
+ */
+function updateTitleCounter() {
+  if (!el.lessonTitle || !el.titleCounter) return;
+  const len = el.lessonTitle.value.length;
+  el.titleCounter.textContent = `${len}/100`;
+  if (len >= 100) {
+    el.titleCounter.style.color = '#ef4444';
+    el.titleCounter.style.fontWeight = 'bold';
+  } else if (len >= 90) {
+    el.titleCounter.style.color = '#f59e0b';
+    el.titleCounter.style.fontWeight = '600';
+  } else {
+    el.titleCounter.style.color = 'var(--text-muted)';
+    el.titleCounter.style.fontWeight = 'normal';
+  }
+}
+
+/**
+ * -------------------------------------------------------------
+ * Application Version & Update Checker
+ * -------------------------------------------------------------
+ */
+const CURRENT_VERSION = '1.0.0';
+
+async function checkForAppUpdates() {
+  try {
+    const res = await fetch(`${state.config.backendUrl}/api/version`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.stripePaymentUrl) {
+      state.config.stripePaymentUrl = data.stripePaymentUrl;
+    }
+    if (data.proOffer) {
+      state.proOffer = data.proOffer;
+      if (!currentAccountSession?.isPro && !currentAccountSession?.is_founding_member) {
+        renderAccountView();
+      }
+    }
+    if (!data.ok || !data.hasUpdate) return;
+
+    if (sessionStorage.getItem('dismissed_update_version') === data.latestVersion) {
+      return;
+    }
+
+    if (el.updateBanner && el.updateBannerText && el.btnDownloadUpdate) {
+      el.updateBannerText.innerHTML = `Update available: <strong>v${data.latestVersion}</strong>`;
+      const isMac = /Mac|iPhone|iPad/i.test(navigator.userAgent || navigator.platform);
+      const downloadUrl = isMac ? data.macDownloadUrl : data.windowsDownloadUrl;
+      el.btnDownloadUpdate.href = downloadUrl || data.releaseUrl || 'https://simple-streamer.bdjlmn.com';
+      el.updateBanner.style.display = 'flex';
+      logDiag(`✨ Newer Simple Streamer version available: v${data.latestVersion}`);
+    }
+  } catch (_) {
+    // Non-fatal, offline resilience
+  }
+}
+
+/**
+ * Returns dynamic, conditional Pro offer details.
+ * When the deal expires or is deactivated, all deal text ($3, limited deal) cleanly disappears.
+ */
+function getProOffer() {
+  const offer = state.proOffer || {};
+  let isDealActive = offer.dealActive !== false;
+  if (offer.expiresAt) {
+    const exp = new Date(offer.expiresAt).getTime();
+    if (!isNaN(exp) && Date.now() > exp) {
+      isDealActive = false;
+    }
+  }
+  const paymentUrl = offer.paymentUrl || state.config.stripePaymentUrl || 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01';
+  return {
+    dealActive: isDealActive,
+    title: isDealActive ? '🔥 LIFETIME FOUNDING DEAL — $3 ONCE' : '⭐ SIMPLE STREAMER PRO ($12/YR)',
+    dealBadge: isDealActive ? 'LIMITED DEAL' : 'ANNUAL',
+    ctaLabel: isDealActive
+      ? (offer.ctaLabel || '⚡ Claim Lifetime Pass ($3 Once) ↗')
+      : '⚡ Upgrade to Pro ($12/yr) ↗',
+    alertCtaLabel: isDealActive
+      ? (offer.alertCtaLabel || 'LIFETIME PASS ($3) ↗')
+      : 'UPGRADE PRO ↗',
+    paymentUrl,
+  };
+}
+
+/**
+ * Reset all local storage, accounts, and destinations to start with a blank slate.
+ */
+async function resetAllLocalState() {
+  if (!confirm('Are you sure you want to reset all local settings, connected accounts, and cached tokens to start fresh?')) {
+    return;
+  }
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (_) {}
+  try {
+    await fetch('http://127.0.0.1:45455/broadcast-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '', description: '', destinations: [] }),
+    });
+  } catch (_) {}
+  try {
+    await fetch('http://127.0.0.1:45455/save-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: '' }),
+    });
+  } catch (_) {}
+  window.location.reload();
+}
+
+/**
+ * -------------------------------------------------------------
+ * Account & Device License Management
+ * -------------------------------------------------------------
+ */
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, (m) => {
+    switch (m) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#039;';
+      default: return m;
+    }
+  });
+}
+
+let currentAccountSession = null;
+
+function loadCachedAccountSession() {
+  try {
+    const raw = localStorage.getItem('simple_streamer_account_session');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.ok) {
+        currentAccountSession = parsed;
+        updateAccountUI(parsed);
+      }
+    }
+  } catch (_) {}
+}
+
+function updateAccountUI(data) {
+  if (!el.accountCard) return;
+
+  if (data && data.ok) {
+    currentAccountSession = data;
+    try {
+      localStorage.setItem('simple_streamer_account_session', JSON.stringify(data));
+    } catch (_) {}
+    const user = data.user || {};
+    const email = user.email || 'Authenticated Streamer';
+    const isFounding = data.is_founding_member || data.subscription_status === 'lifetime_founding';
+    const isPro = isFounding || data.isPro || data.subscription_status === 'pro';
+    const deviceCount = data.device_count || 1;
+    const maxDevices = data.max_devices || 2;
+
+    if (el.accountBadge) {
+      if (isFounding) {
+        el.accountBadge.textContent = t('founding100Badge');
+        el.accountBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+        el.accountBadge.style.color = '#fbbf24';
+        el.accountBadge.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+      } else if (isPro) {
+        el.accountBadge.textContent = t('proEditionBadge');
+        el.accountBadge.style.background = 'rgba(52, 211, 153, 0.2)';
+        el.accountBadge.style.color = '#34d399';
+        el.accountBadge.style.border = '1px solid rgba(52, 211, 153, 0.4)';
+      } else {
+        el.accountBadge.textContent = t('freeEditionBadge');
+        el.accountBadge.style.background = 'rgba(148, 163, 184, 0.15)';
+        el.accountBadge.style.color = '#94a3b8';
+        el.accountBadge.style.border = 'none';
+      }
+    }
+
+    if (el.btnHeaderAccount) {
+      if (isFounding) {
+        el.btnHeaderAccount.textContent = t('foundingBadge');
+        el.btnHeaderAccount.style.color = '#fbbf24';
+        el.btnHeaderAccount.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+        el.btnHeaderAccount.style.background = 'rgba(245, 158, 11, 0.15)';
+      } else if (isPro) {
+        el.btnHeaderAccount.textContent = t('proBadge');
+        el.btnHeaderAccount.style.color = '#34d399';
+        el.btnHeaderAccount.style.borderColor = 'rgba(52, 211, 153, 0.5)';
+        el.btnHeaderAccount.style.background = 'rgba(52, 211, 153, 0.15)';
+      } else {
+        el.btnHeaderAccount.textContent = t('freeBadge');
+        el.btnHeaderAccount.style.color = '#94a3b8';
+        el.btnHeaderAccount.style.borderColor = '#334155';
+        el.btnHeaderAccount.style.background = 'rgba(148, 163, 184, 0.15)';
+      }
+    }
+
+    if (el.accountInfo) {
+      el.accountInfo.style.display = 'block';
+      const planText = isFounding ? t('lifetimePassText') : isPro ? t('activeProSubText') : t('freeCoreText');
+      const linkedText = t('machinesLinked', { count: deviceCount, max: maxDevices });
+      el.accountInfo.innerHTML = `
+        <div class="account-user-email">${escapeHtml(email)}</div>
+        <div class="account-user-meta">
+          ${planText} · <span class="account-devices-count">${linkedText}</span>
+        </div>
+      `;
+    }
+
+    if (el.accountActions) {
+      el.accountActions.innerHTML = `
+        <button type="button" id="btnManageAccount" class="btn-account-primary">${t('btnManageAccount')}</button>
+        <button type="button" id="btnSignOutAccount" class="btn-account-signout">${t('btnSignOut')}</button>
+      `;
+      const btnManage = document.getElementById('btnManageAccount');
+      if (btnManage) {
+        btnManage.onclick = () => openExternalUrl('https://simple-streamer.bdjlmn.com/account');
+      }
+      const btnSignOut = document.getElementById('btnSignOutAccount');
+      if (btnSignOut) {
+        btnSignOut.onclick = () => signOutAccount();
+      }
+    }
+  } else {
+    currentAccountSession = null;
+    try {
+      localStorage.removeItem('simple_streamer_account_session');
+    } catch (_) {}
+    if (el.accountBadge) {
+      el.accountBadge.textContent = t('freeEditionBadge');
+      el.accountBadge.style.background = 'rgba(148, 163, 184, 0.15)';
+      el.accountBadge.style.color = '#94a3b8';
+      el.accountBadge.style.border = 'none';
+    }
+    if (el.btnHeaderAccount) {
+      el.btnHeaderAccount.textContent = '⚡ Upgrade Pro';
+      el.btnHeaderAccount.style.color = '#fbbf24';
+      el.btnHeaderAccount.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+      el.btnHeaderAccount.style.background = 'rgba(245, 158, 11, 0.15)';
+    }
+    if (el.accountInfo) {
+      el.accountInfo.style.display = 'none';
+      el.accountInfo.innerHTML = '';
+    }
+    if (el.accountActions) {
+      const offer = getProOffer();
+      el.accountActions.innerHTML = `
+        <div class="pro-offer-card" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 12px; width: 100%; box-sizing: border-box;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 11px; font-weight: 800; color: #fbbf24; letter-spacing: 0.3px;">${escapeHtml(offer.title)}</span>
+          </div>
+          <div style="font-size: 11px; color: #fde68a; line-height: 1.5; margin-bottom: 12px;">
+            <div style="display: flex; align-items: flex-start; gap: 6px; margin-bottom: 6px;">
+              <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">✓</span>
+              <span>1-Click broadcast with synced title, description & thumbnail</span>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 6px; margin-bottom: 6px;">
+              <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">✓</span>
+              <span>Update stream title & info mid-broadcast without stopping OBS</span>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 6px;">
+              <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">✓</span>
+              <span>Mobile phone remote control over internet or cellular</span>
+            </div>
+          </div>
+          <button type="button" id="btnUpgradePro" class="btn-account-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 800; border: none; padding: 9px 12px; width: 100%; border-radius: 6px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 6px;">${escapeHtml(offer.ctaLabel)}</button>
+        </div>
+
+        <div style="width: 100%; text-align: center; margin-top: 2px;">
+          <div style="font-size: 10px; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Already have a license?</div>
+          <button type="button" id="btnSignInAccount" class="btn-account-secondary" style="width: 100%; font-size: 11px; padding: 7px 10px; background: #1e2434; color: #cbd5e1; border: 1px solid #334155; border-radius: 6px; cursor: pointer; font-weight: 600;">${t('btnSignInClaim')}</button>
+          <button type="button" id="btnLinkToken" style="background: none; border: none; color: #64748b; font-size: 10px; cursor: pointer; text-decoration: underline; margin-top: 8px; padding: 2px;">Have an offline license key? Paste token</button>
+        </div>
+      `;
+      const btnUp = document.getElementById('btnUpgradePro');
+      if (btnUp) {
+        btnUp.onclick = () => openExternalUrl(offer.paymentUrl);
+      }
+      const btnIn = document.getElementById('btnSignInAccount');
+      if (btnIn) {
+        btnIn.onclick = () => startAccountSignInFlow();
+      }
+      const btnLnk = document.getElementById('btnLinkToken');
+      if (btnLnk) {
+        btnLnk.onclick = () => promptPasteToken();
+      }
+    }
+  }
+  updateSettingsMenuSubtitles();
+}
+
+async function verifyAccountSession() {
+  const token = getAuthToken();
+  if (!token) {
+    updateAccountUI(null);
+    return;
+  }
+
+  try {
+    const hwid = await syncDeviceHwidFromBridge();
+
+    const res = await fetch(`${state.config.backendUrl}/auth/device-check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        token,
+        hwid,
+        deviceName: 'OBS Studio Workstation',
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      if (res.status === 403 && errData.error === 'DEVICE_LIMIT_REACHED') {
+        showAlert(
+          'DEVICE LIMIT REACHED',
+          'This account has reached its 2-device limit. Manage or revoke devices at simple-streamer.bdjlmn.com/account.',
+          [{ label: 'MANAGE DEVICES', onClick: () => openExternalUrl('https://simple-streamer.bdjlmn.com/account') }],
+          'warning'
+        );
+      }
+      if (!currentAccountSession) {
+        updateAccountUI(null);
+      }
+      return;
+    }
+
+    const data = await res.json();
+    if (data.ok) {
+      updateAccountUI(data);
+      // Auto-sync presets if Pro
+      if (data.isPro || data.is_founding_member || data.subscription_status === 'pro' || data.subscription_status === 'lifetime_founding') {
+        syncPresetsWithCloud(false).catch(() => {});
+      }
+    } else {
+      updateAccountUI(null);
+    }
+  } catch (_) {
+    // Offline resilience: if offline, retain cached state if available
+  }
+}
+
+function promptPasteToken() {
+  const token = prompt(t('promptPasteToken'));
+  if (token && token.trim()) {
+    localStorage.setItem('simple_streamer_auth_token', token.trim());
+    logDiag('Validating account token...');
+    verifyAccountSession().then(() => {
+      showAlert(t('signedInSuccessTitle') || '✓ SIGNED IN', t('accountLinkedAlert'), [], 'success');
+    });
+  }
+}
+
+function signOutAccount() {
+  if (confirm(t('confirmSignOut'))) {
+    localStorage.removeItem('simple_streamer_auth_token');
+    localStorage.removeItem('simple_streamer_pro_token');
+    localStorage.removeItem('simple_streamer_account_session');
+    updateAccountUI(null);
+    showAlert(t('alertTitle'), t('alertSignedOut'), [], 'info');
+  }
+}
+
+let accountAuthPollTimer = null;
+
+function startAccountSignInFlow() {
+  const sessionId = generateSecureSessionId('session_user');
+  openExternalUrl(`https://simple-streamer.bdjlmn.com/login?session=${sessionId}`);
+  logDiag('Waiting for account authentication in browser...');
+  startAccountAuthPoll(sessionId);
+}
+
+function startAccountAuthPoll(sessionId) {
+  if (accountAuthPollTimer) {
+    clearInterval(accountAuthPollTimer);
+    accountAuthPollTimer = null;
+  }
+  let attempts = 0;
+  const maxAttempts = 120; // 3 minutes
+  accountAuthPollTimer = setInterval(async () => {
+    attempts++;
+    if (attempts > maxAttempts) {
+      clearInterval(accountAuthPollTimer);
+      accountAuthPollTimer = null;
+      return;
+    }
+    try {
+      const res = await fetch(`${state.config.backendUrl}/api/auth-session?session=${sessionId}&_t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        clearInterval(accountAuthPollTimer);
+        accountAuthPollTimer = null;
+        localStorage.setItem('simple_streamer_auth_token', data.token);
+        fetch('http://127.0.0.1:45455/focus-obs', { mode: 'no-cors' }).catch(() => {});
+        await verifyAccountSession();
+        showAlert(
+          t('signedInSuccessTitle') || '✓ SIGNED IN',
+          t('accountConnectedWelcome', { email: data.user?.email || 'Streamer' }),
+          [],
+          'success'
+        );
+      }
+    } catch (_) {}
+  }, 1500);
+}
+
+/**
+ * -------------------------------------------------------------
+ * Metadata Real-Time Two-Way Sync (Local Bridge & Remote Phone)
+ * -------------------------------------------------------------
+ */
+function syncMetadataToBridgeAndRemote(titleOverride, descOverride) {
+  const titleEl = document.getElementById('lessonTitle');
+  const descEl = document.getElementById('lessonDescription');
+
+  let title = (typeof titleOverride === 'string') ? titleOverride.trim() : (titleEl ? titleEl.value.trim() : '');
+  let description = (typeof descOverride === 'string') ? descOverride.trim() : (descEl ? descEl.value.trim() : '');
+
+  // Guard against any event object leakage
+  if (title.includes('[object')) title = '';
+  if (description.includes('[object')) description = '';
+
+  // Persist immediately to local bridge so background poll sees updated values
+  fetch(`http://127.0.0.1:45455/save-title?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`).catch(() => {});
+
+  // Broadcast to mobile remotes via OBS WebSocket CustomEvent
+  if (state.obs && state.obs.isConnected) {
+    state.obs.call('BroadcastCustomEvent', {
+      eventData: {
+        action: 'METADATA_CHANGED',
+        title,
+        description,
+        destinations: (state.destinations || []).map((d) => ({
+          id: d.id,
+          name: d.name || d.platform,
+          platform: d.platform,
+          enabled: d.enabled !== false,
+        })),
+      }
+    }).catch(() => {});
+  }
+}
+
+/**
+ * -------------------------------------------------------------
+ * Broadcast Preset Templates Engine
+ * -------------------------------------------------------------
+ */
+const DEFAULT_PRESET_TEMPLATES = [];
+let activePresetId = localStorage.getItem('simple_streamer_active_preset') || '';
+
+function getAuthToken() {
+  return (
+    localStorage.getItem('simple_streamer_auth_token') ||
+    localStorage.getItem('simple_streamer_pro_token') ||
+    state.config.apiKey ||
+    ''
+  );
+}
+
+let cachedBridgeHwid = null;
+
+async function syncDeviceHwidFromBridge() {
+  if (cachedBridgeHwid && cachedBridgeHwid.length >= 8 && !cachedBridgeHwid.startsWith('obs_dock_')) {
+    return cachedBridgeHwid;
+  }
+  try {
+    const res = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors' });
+    if (res.ok) {
+      const data = await res.json();
+      const bridgeHwid = data.hwid || data.machineId;
+      if (bridgeHwid && bridgeHwid.length >= 8 && !bridgeHwid.startsWith('obs_dock_')) {
+        cachedBridgeHwid = bridgeHwid.trim();
+        localStorage.setItem('simple_streamer_hwid', cachedBridgeHwid);
+        return cachedBridgeHwid;
+      }
+    }
+  } catch (_) {}
+  return getDeviceHwid();
+}
+
+function getDeviceHwid() {
+  if (cachedBridgeHwid && cachedBridgeHwid.length >= 8 && !cachedBridgeHwid.startsWith('obs_dock_')) {
+    return cachedBridgeHwid;
+  }
+  let hwid = localStorage.getItem('simple_streamer_hwid');
+  if (hwid && !hwid.startsWith('obs_dock_') && hwid.length >= 8 && hwid !== 'default-hwid') {
+    cachedBridgeHwid = hwid.trim();
+    return cachedBridgeHwid;
+  }
+  if (!hwid || hwid.length < 8 || hwid === 'default-hwid') {
+    hwid = 'obs_dock_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 6);
+    localStorage.setItem('simple_streamer_hwid', hwid);
+  }
+  return hwid;
+}
+
+function applyTemplateVariables(str) {
+  if (!str) return '';
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayStr = days[now.getDay()];
+  const timeStr = now.toTimeString().substring(0, 5);
+  return str
+    .replace(/\{date\}/g, dateStr)
+    .replace(/\{day\}/g, dayStr)
+    .replace(/\{time\}/g, timeStr);
+}
+
+function getSavedTemplates() {
+  try {
+    const raw = localStorage.getItem('simple_streamer_templates');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Filter out hardcoded demo presets
+    const cleaned = parsed.filter(
+      (t) => t.id !== 'tpl_khutbah' && t.id !== 'tpl_halaqah' && t.id !== 'tpl_podcast'
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem('simple_streamer_templates', JSON.stringify(cleaned));
+    }
+    return cleaned;
+  } catch (_) {
+    return [];
+  }
+}
+
+function isPresetDirty() {
+  if (!activePresetId) return false;
+  const templates = getSavedTemplates();
+  const activeTpl = templates.find((t) => t.id === activePresetId);
+  if (!activeTpl) return false;
+
+  const curTitle = el.lessonTitle ? el.lessonTitle.value.trim() : '';
+  const curDesc = el.lessonDescription ? el.lessonDescription.value.trim() : '';
+
+  const appliedTitle = applyTemplateVariables(activeTpl.title).slice(0, 100);
+  const appliedDesc = applyTemplateVariables(activeTpl.description);
+
+  return (curTitle !== activeTpl.title && curTitle !== appliedTitle) ||
+         (curDesc !== activeTpl.description && curDesc !== appliedDesc);
+}
+
+function renderTemplateOptions() {
+  if (!el.templateSelector) return;
+  const templates = getSavedTemplates();
+  el.templateSelector.innerHTML = '';
+
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = t('presetsHeader');
+  if (!activePresetId) defaultOpt.selected = true;
+  el.templateSelector.appendChild(defaultOpt);
+
+  const activeTpl = templates.find((t) => t.id === activePresetId);
+  const dirty = isPresetDirty();
+
+  // ONLY show "Save changes" if a preset is active AND has unsaved modifications
+  if (activeTpl && dirty) {
+    const updateOpt = document.createElement('option');
+    updateOpt.value = '__update__';
+    updateOpt.textContent = t('savePresetTo', { name: activeTpl.name });
+    el.templateSelector.appendChild(updateOpt);
+  }
+
+  const newOpt = document.createElement('option');
+  newOpt.value = '__new__';
+  newOpt.textContent = t('newPreset');
+  el.templateSelector.appendChild(newOpt);
+
+  templates.forEach((tpl) => {
+    const opt = document.createElement('option');
+    opt.value = tpl.id;
+    opt.textContent = `📋 ${tpl.name}`;
+    if (tpl.id === activePresetId && !dirty) opt.selected = true;
+    el.templateSelector.appendChild(opt);
+  });
+
+  if (templates.length > 0) {
+    const delOpt = document.createElement('option');
+    delOpt.value = '__delete__';
+    delOpt.textContent = t('deletePreset');
+    el.templateSelector.appendChild(delOpt);
+  }
+
+  const token = getAuthToken();
+  if (token) {
+    const syncOpt = document.createElement('option');
+    syncOpt.value = '__sync__';
+    syncOpt.textContent = t('syncPresetsCloud');
+    el.templateSelector.appendChild(syncOpt);
+  }
+}
+
+async function syncPresetsWithCloud(isManual = false) {
+  const token = getAuthToken();
+  if (!token) {
+    if (isManual) {
+      logDiag('ℹ️ Log in to Simple Streamer Pro to sync presets across your 2 machines.');
+    }
+    return;
+  }
+
+  try {
+    const localTemplates = getSavedTemplates();
+    const res = await fetch(`${state.config.backendUrl}/presets/cloud`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ presets: localTemplates }),
+    });
+
+    if (!res.ok) {
+      if (isManual) logDiag(`Cloud preset sync failed: HTTP ${res.status}`);
+      return;
+    }
+
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.presets)) {
+      const cleaned = data.presets.filter(
+        (t) => t.id !== 'tpl_khutbah' && t.id !== 'tpl_halaqah' && t.id !== 'tpl_podcast'
+      );
+      localStorage.setItem('simple_streamer_templates', JSON.stringify(cleaned));
+      renderTemplateOptions();
+      logDiag(`☁️ Presets synced across devices (${cleaned.length} active)`);
+    }
+  } catch (err) {
+    if (isManual) logDiag(`Cloud preset sync error: ${err.message}`);
+  }
+}
+
+function handleTemplateSelect(e) {
+  const val = e.target.value;
+
+  if (!val) {
+    activePresetId = '';
+    localStorage.removeItem('simple_streamer_active_preset');
+    renderTemplateOptions();
+    logDiag('Preset: None selected.');
+    return;
+  }
+
+  if (val === '__sync__') {
+    syncPresetsWithCloud(true);
+    renderTemplateOptions();
+    return;
+  }
+
+  if (val === '__update__') {
+    const templates = getSavedTemplates();
+    const tpl = templates.find((t) => t.id === activePresetId);
+    if (tpl) {
+      const curTitle = el.lessonTitle ? el.lessonTitle.value.trim() : '';
+      const curDesc = el.lessonDescription ? el.lessonDescription.value.trim() : '';
+      tpl.title = curTitle;
+      tpl.description = curDesc;
+      tpl.updated_at = new Date().toISOString();
+      localStorage.setItem('simple_streamer_templates', JSON.stringify(templates));
+      renderTemplateOptions();
+      logDiag(`💾 Saved changes to preset "${tpl.name}".`);
+      syncPresetsWithCloud(false);
+    }
+    return;
+  }
+
+  if (val === '__new__') {
+    const currentTitle = el.lessonTitle ? el.lessonTitle.value.trim() : '';
+    const currentDesc = el.lessonDescription ? el.lessonDescription.value.trim() : '';
+    const name = prompt(t('enterPresetPrompt'), currentTitle || 'My Broadcast Preset');
+    if (name && name.trim()) {
+      const templates = getSavedTemplates();
+      const newTpl = {
+        id: 'tpl_' + Date.now(),
+        name: name.trim(),
+        title: currentTitle,
+        description: currentDesc,
+        updated_at: new Date().toISOString()
+      };
+      templates.push(newTpl);
+      localStorage.setItem('simple_streamer_templates', JSON.stringify(templates));
+      activePresetId = newTpl.id;
+      localStorage.setItem('simple_streamer_active_preset', newTpl.id);
+      renderTemplateOptions();
+      logDiag(`Created preset: "${newTpl.name}"`);
+      syncPresetsWithCloud(false);
+    } else {
+      renderTemplateOptions();
+    }
+    return;
+  }
+
+  if (val === '__delete__') {
+    const templates = getSavedTemplates();
+    if (templates.length === 0) {
+      alert(t('deletePreset'));
+      renderTemplateOptions();
+      return;
+    }
+    const list = templates.map((t, idx) => `${idx + 1}. ${t.name}`).join('\n');
+    const input = prompt(t('selectPresetToDelete', { list, max: templates.length }));
+    if (input) {
+      const idx = parseInt(input.trim(), 10) - 1;
+      if (idx >= 0 && idx < templates.length) {
+        const removed = templates.splice(idx, 1)[0];
+        if (activePresetId === removed.id) {
+          activePresetId = '';
+          localStorage.removeItem('simple_streamer_active_preset');
+        }
+        localStorage.setItem('simple_streamer_templates', JSON.stringify(templates));
+        logDiag(`Deleted preset: "${removed.name}"`);
+        syncPresetsWithCloud(false);
+      }
+    }
+    renderTemplateOptions();
+    return;
+  }
+
+  const templates = getSavedTemplates();
+  const selected = templates.find((t) => t.id === val);
+  if (selected) {
+    activePresetId = selected.id;
+    localStorage.setItem('simple_streamer_active_preset', selected.id);
+
+    const interpolatedTitle = applyTemplateVariables(selected.title).slice(0, 100);
+    const interpolatedDesc = applyTemplateVariables(selected.description);
+
+    if (el.lessonTitle) {
+      el.lessonTitle.value = interpolatedTitle;
+      localStorage.setItem('dock_lessonTitle', interpolatedTitle);
+    }
+    if (el.lessonDescription) {
+      el.lessonDescription.value = interpolatedDesc;
+      localStorage.setItem('dock_lessonDescription', interpolatedDesc);
+    }
+    updateTitleCounter();
+    syncMetadataToBridgeAndRemote(interpolatedTitle, interpolatedDesc);
+    logDiag(`Applied preset: ${selected.name}`);
+    renderTemplateOptions();
   }
 }
 
@@ -240,9 +1143,12 @@ function startTimer() {
   stopTimer();
   state.streamStartTime = Date.now();
   if (el.liveTimer) el.liveTimer.textContent = '00:00:00';
+  if (el.settingsLiveTimer) el.settingsLiveTimer.textContent = '00:00:00';
   state.timerInterval = setInterval(() => {
     const elapsed = Date.now() - state.streamStartTime;
-    if (el.liveTimer) el.liveTimer.textContent = formatElapsed(elapsed);
+    const str = formatElapsed(elapsed);
+    if (el.liveTimer) el.liveTimer.textContent = str;
+    if (el.settingsLiveTimer) el.settingsLiveTimer.textContent = str;
   }, 1000);
 
   startMetricsPolling();
@@ -256,88 +1162,197 @@ function stopTimer() {
   stopMetricsPolling();
 }
 
-/**
- * Toggle Settings Drawer View
- */
-function toggleSettingsPanel(forceState) {
-  const isCurrentlyOpen = el.diagPanel.style.display === 'block';
-  const shouldOpen = forceState !== undefined ? forceState : !isCurrentlyOpen;
+// Navigation Controller (Elgato-Style Subpages)
+const nav = {
+  currentView: 'broadcast', // 'broadcast' | 'settings_menu' | 'destinations' | 'remote' | 'account' | 'general'
+  previousView: 'broadcast',
+};
 
-  if (shouldOpen && el.remotePanel) {
-    el.remotePanel.style.display = 'none';
-    if (el.toggleRemoteBtn) {
-      el.toggleRemoteBtn.classList.remove('active');
-      el.toggleRemoteBtn.textContent = '📱';
+function navigateTo(targetView) {
+  nav.previousView = nav.currentView;
+  nav.currentView = targetView;
+  renderNavigation();
+}
+
+function renderNavigation() {
+  const isSettings = nav.currentView !== 'broadcast';
+  const isSubpage = isSettings && nav.currentView !== 'settings_menu';
+
+  // Toggle Top-level Views
+  if (el.viewBroadcast) el.viewBroadcast.style.display = isSettings ? 'none' : 'flex';
+  if (el.viewSettings) el.viewSettings.style.display = isSettings ? 'flex' : 'none';
+
+  // Toggle Header Account / Sign In button
+  if (el.btnHeaderAccount) {
+    el.btnHeaderAccount.style.display = isSettings ? 'none' : '';
+  }
+
+  // Toggle Header Action Button state (⚙ ↔ ✕ ↔ ←)
+  if (el.toggleDiagBtn) {
+    el.toggleDiagBtn.classList.toggle('active', isSettings);
+    el.toggleDiagBtn.classList.toggle('is-back', isSubpage);
+
+    if (!isSettings) {
+      el.toggleDiagBtn.textContent = '⚙';
+      el.toggleDiagBtn.title = t('toggleSettingsTip');
+      el.toggleDiagBtn.setAttribute('data-i18n-title', 'toggleSettingsTip');
+      el.toggleDiagBtn.setAttribute('aria-label', t('toggleSettingsTip') || 'Settings');
+    } else if (nav.currentView === 'settings_menu') {
+      el.toggleDiagBtn.textContent = '✕';
+      el.toggleDiagBtn.title = t('backToAppTip') || 'Close Settings';
+      el.toggleDiagBtn.setAttribute('data-i18n-title', 'backToAppTip');
+      el.toggleDiagBtn.setAttribute('aria-label', t('backToAppTip') || 'Close Settings');
+    } else {
+      el.toggleDiagBtn.textContent = '←';
+      el.toggleDiagBtn.title = t('settingsBackSettings') || 'Back to Settings';
+      el.toggleDiagBtn.setAttribute('data-i18n-title', 'settingsBackSettings');
+      el.toggleDiagBtn.setAttribute('aria-label', t('settingsBackSettings') || 'Back to Settings');
     }
   }
 
-  el.diagPanel.style.display = shouldOpen ? 'block' : 'none';
-  if (el.inputGroup) {
-    el.inputGroup.style.display = shouldOpen ? 'none' : 'block';
-  }
-  if (el.liveContainer && state.isStreaming) {
-    el.liveContainer.style.display = shouldOpen ? 'none' : 'block';
-  }
-  if (el.actionContainer) {
-    el.actionContainer.style.display = shouldOpen ? 'none' : 'block';
-  }
-  if (el.toggleDiagBtn) {
-    el.toggleDiagBtn.classList.toggle('active', shouldOpen);
-    el.toggleDiagBtn.textContent = shouldOpen ? '✕' : '⚙';
-    el.toggleDiagBtn.title = shouldOpen ? 'Back to Simple Streamer' : 'Platform Settings & Connections';
-  }
+  // Contextual Header Title
   if (el.brandTitle) {
-    el.brandTitle.textContent = shouldOpen ? 'SETTINGS' : 'SIMPLE STREAMER';
+    if (!isSettings) {
+      el.brandTitle.textContent = t('brandTitle');
+      el.brandTitle.setAttribute('data-i18n', 'brandTitle');
+    } else if (nav.currentView === 'settings_menu') {
+      el.brandTitle.textContent = t('settingsNavTitle') || 'SETTINGS';
+      el.brandTitle.removeAttribute('data-i18n');
+    } else if (nav.currentView === 'destinations') {
+      el.brandTitle.textContent = t('destinationsTitle');
+      el.brandTitle.removeAttribute('data-i18n');
+    } else if (nav.currentView === 'remote') {
+      el.brandTitle.textContent = t('mobileRemoteMenuTitle');
+      el.brandTitle.removeAttribute('data-i18n');
+    } else if (nav.currentView === 'account') {
+      el.brandTitle.textContent = t('accountPassTitle');
+      el.brandTitle.removeAttribute('data-i18n');
+    } else if (nav.currentView === 'general') {
+      el.brandTitle.textContent = t('generalMenuTitle');
+      el.brandTitle.removeAttribute('data-i18n');
+    }
   }
-  if (el.brandSub) {
-    el.brandSub.textContent = '';
+
+  // Update live indicator inside settings
+  if (el.settingsLiveBar) {
+    el.settingsLiveBar.style.display = isSettings && state.isStreaming ? 'flex' : 'none';
+    if (el.settingsLiveTimer && el.liveTimer) {
+      el.settingsLiveTimer.textContent = el.liveTimer.textContent;
+    }
   }
+
+  // Subpages vs Master Menu Hub
+  const subpages = [
+    { el: el.settingsMenu, show: nav.currentView === 'settings_menu' },
+    { el: el.subpageDestinations, show: nav.currentView === 'destinations' },
+    { el: el.subpageRemote, show: nav.currentView === 'remote' },
+    { el: el.subpageAccount, show: nav.currentView === 'account' },
+    { el: el.subpageGeneral, show: nav.currentView === 'general' },
+  ];
+
+  subpages.forEach(({ el: node, show }) => {
+    if (node) node.style.display = show ? 'block' : 'none';
+  });
+
+  // Refresh dynamic info in subpages
+  if (isSettings) {
+    if (nav.currentView === 'destinations') {
+      if (el.destLockedNotice) {
+        el.destLockedNotice.style.display = state.isStreaming ? 'block' : 'none';
+      }
+      renderDestinationsList();
+    } else if (nav.currentView === 'remote') {
+      updateRemotePanelInfo();
+    } else if (nav.currentView === 'settings_menu') {
+      updateSettingsMenuSubtitles();
+    } else if (nav.currentView === 'general') {
+      updateGeneralSettingsUI();
+    }
+  }
+
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-/**
- * Toggle Mobile Remote Control View
- */
-function toggleRemotePanel(forceState) {
-  const isCurrentlyOpen = el.remotePanel && el.remotePanel.style.display === 'block';
-  const shouldOpen = forceState !== undefined ? forceState : !isCurrentlyOpen;
+function handleTopRightAction() {
+  if (nav.currentView === 'broadcast') {
+    navigateTo('settings_menu');
+  } else if (nav.currentView === 'settings_menu') {
+    navigateTo('broadcast');
+  } else {
+    // If on any subpage: go back to settings menu
+    navigateTo('settings_menu');
+  }
+}
 
-  if (shouldOpen && el.diagPanel) {
-    el.diagPanel.style.display = 'none';
-    if (el.toggleDiagBtn) {
-      el.toggleDiagBtn.classList.remove('active');
-      el.toggleDiagBtn.textContent = '⚙';
+function handleSettingsBack() {
+  handleTopRightAction();
+}
+
+function toggleSettingsPanel(forceState) {
+  if (forceState === true) {
+    navigateTo('settings_menu');
+  } else if (forceState === false) {
+    navigateTo('broadcast');
+  } else {
+    handleTopRightAction();
+  }
+}
+
+function toggleRemotePanel() {
+  navigateTo('remote');
+}
+
+function updateSettingsMenuSubtitles() {
+  if (el.settingsDestCountSub) {
+    const total = state.destinations.length;
+    const active = state.destinations.filter((d) => d.enabled).length;
+    el.settingsDestCountSub.textContent = total === 0 ? t('noDestinationsTitle') : `${active}/${total} active destinations`;
+  }
+
+  if (currentAccountSession) {
+    if (currentAccountSession.is_founding_member) {
+      if (el.settingsAccountPlanSub) el.settingsAccountPlanSub.textContent = 'Founding 100 Lifetime License';
+      if (el.settingsAccountBadge) {
+        el.settingsAccountBadge.textContent = '🔥 FOUNDING';
+        el.settingsAccountBadge.style.color = '#f59e0b';
+      }
+    } else if (currentAccountSession.isPro) {
+      if (el.settingsAccountPlanSub) el.settingsAccountPlanSub.textContent = 'Simple Streamer Pro ($12/yr)';
+      if (el.settingsAccountBadge) {
+        el.settingsAccountBadge.textContent = '⭐ PRO';
+        el.settingsAccountBadge.style.color = '#fbbf24';
+      }
+    } else {
+      if (el.settingsAccountPlanSub) el.settingsAccountPlanSub.textContent = 'Free Plan';
+      if (el.settingsAccountBadge) {
+        el.settingsAccountBadge.textContent = 'FREE';
+        el.settingsAccountBadge.style.color = '#94a3b8';
+      }
+    }
+  } else {
+    if (el.settingsAccountPlanSub) el.settingsAccountPlanSub.textContent = 'Free Plan';
+    if (el.settingsAccountBadge) {
+      el.settingsAccountBadge.textContent = 'FREE';
+      el.settingsAccountBadge.style.color = '#94a3b8';
     }
   }
+}
 
-  if (el.remotePanel) {
-    el.remotePanel.style.display = shouldOpen ? 'block' : 'none';
+function updateGeneralSettingsUI() {
+  if (el.obsWsEndpointDisplay) {
+    el.obsWsEndpointDisplay.textContent = state.config.obsUrl || 'ws://127.0.0.1:4455';
   }
-  if (el.inputGroup) {
-    el.inputGroup.style.display = shouldOpen ? 'none' : 'block';
+  if (el.obsWsStatusBadge) {
+    if (state.obs && state.obs.isConnected) {
+      el.obsWsStatusBadge.textContent = t('obsWsStatusConnected') || 'CONNECTED';
+      el.obsWsStatusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+      el.obsWsStatusBadge.style.color = '#10b981';
+    } else {
+      el.obsWsStatusBadge.textContent = t('obsWsStatusDisconnected') || 'DISCONNECTED';
+      el.obsWsStatusBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+      el.obsWsStatusBadge.style.color = '#ef4444';
+    }
   }
-  if (el.liveContainer && state.isStreaming) {
-    el.liveContainer.style.display = shouldOpen ? 'none' : 'block';
-  }
-  if (el.actionContainer) {
-    el.actionContainer.style.display = shouldOpen ? 'none' : 'block';
-  }
-  if (el.toggleRemoteBtn) {
-    el.toggleRemoteBtn.classList.toggle('active', shouldOpen);
-    el.toggleRemoteBtn.textContent = shouldOpen ? '✕' : '📱';
-    el.toggleRemoteBtn.title = shouldOpen ? 'Back to Simple Streamer' : 'Mobile Remote Control';
-  }
-  if (el.brandTitle) {
-    el.brandTitle.textContent = shouldOpen ? 'MOBILE REMOTE' : 'SIMPLE STREAMER';
-  }
-  if (el.brandSub) {
-    el.brandSub.textContent = '';
-  }
-
-  if (shouldOpen) {
-    updateRemotePanelInfo();
-  }
-  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 /**
@@ -382,8 +1397,8 @@ async function updateRemotePanelInfo() {
     try {
       state.remoteQr = new QRCode(el.remoteQrContainer, {
         text: primaryUrl,
-        width: 160,
-        height: 160,
+        width: 105,
+        height: 105,
         colorDark: '#0d0f12',
         colorLight: '#ffffff',
         correctLevel: QRCode.CorrectLevel.M,
@@ -397,12 +1412,25 @@ async function updateRemotePanelInfo() {
     el.btnCopyRemoteUrl.onclick = async () => {
       try {
         await navigator.clipboard.writeText(primaryUrl);
-        el.btnCopyRemoteUrl.textContent = '✓ Copied to Clipboard!';
+        el.btnCopyRemoteUrl.textContent = t('remoteLinkCopied');
         setTimeout(() => {
-          if (el.btnCopyRemoteUrl) el.btnCopyRemoteUrl.textContent = '📋 Copy Remote Link';
+          if (el.btnCopyRemoteUrl) el.btnCopyRemoteUrl.textContent = t('btnCopyRemoteLink');
         }, 2000);
       } catch (_) {
         prompt('Copy this link:', primaryUrl);
+      }
+    };
+  }
+
+  const btnToggleNet = document.getElementById('btnToggleNetworkDetails');
+  const netDetails = document.getElementById('remoteNetworkDetails');
+  if (btnToggleNet && netDetails) {
+    btnToggleNet.onclick = () => {
+      const isHidden = netDetails.style.display === 'none';
+      netDetails.style.display = isHidden ? 'flex' : 'none';
+      const span = btnToggleNet.querySelector('span');
+      if (span) {
+        span.textContent = isHidden ? '▴ Hide Network Info' : '▾ Direct Network Info';
       }
     };
   }
@@ -548,14 +1576,32 @@ function loadDestinations() {
 
   state.destinations = deduplicateDestinations(state.destinations);
 
+  // Ensure exactly one destination is designated as primary
+  if (state.destinations.length > 0) {
+    const hasPrimary = state.destinations.some((d) => d.isPrimary);
+    if (!hasPrimary) {
+      state.destinations[0].isPrimary = true;
+    }
+  }
+
   // Always query bridge remote-config to sync and merge server destinations
   fetch('http://127.0.0.1:45455/remote-config')
     .then((r) => r.json())
     .then((cfg) => {
+      if (cfg && (cfg.hwid || cfg.machineId)) {
+        cachedBridgeHwid = (cfg.hwid || cfg.machineId).trim();
+        localStorage.setItem('simple_streamer_hwid', cachedBridgeHwid);
+      }
       if (cfg && cfg.destinations && Array.isArray(cfg.destinations) && cfg.destinations.length > 0) {
         if (!state.destinations || state.destinations.length === 0) {
           state.destinations = deduplicateDestinations(cfg.destinations);
+          if (state.destinations.length > 0 && !state.destinations.some((d) => d.isPrimary)) {
+            state.destinations[0].isPrimary = true;
+          }
           saveDestinations();
+          renderDestinationsPills();
+          renderDestinationsList();
+          updateActionBtnState();
         } else {
           let merged = false;
           cfg.destinations.forEach((sd) => {
@@ -570,7 +1616,13 @@ function loadDestinations() {
           });
           if (merged) {
             state.destinations = deduplicateDestinations(state.destinations);
+            if (!state.destinations.some((d) => d.isPrimary)) {
+              state.destinations[0].isPrimary = true;
+            }
             saveDestinations();
+            renderDestinationsPills();
+            renderDestinationsList();
+            updateActionBtnState();
           }
         }
       }
@@ -579,7 +1631,47 @@ function loadDestinations() {
 
   renderDestinationsPills();
   renderDestinationsList();
+  updateSettingsMenuSubtitles();
   syncNativePluginConfig();
+}
+
+/**
+ * Set a specific destination as the Primary Broadcast Platform (OBS Core Output)
+ */
+function setPrimaryDestination(destId) {
+  let changed = false;
+  state.destinations.forEach((d) => {
+    const shouldBePrimary = d.id === destId;
+    if (d.isPrimary !== shouldBePrimary) {
+      d.isPrimary = shouldBePrimary;
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveDestinations();
+    const primary = state.destinations.find((d) => d.id === destId);
+    logDiag(`★ Set "${primary?.name || destId}" as Primary Broadcast Platform (OBS Core Output)`);
+  }
+}
+
+/**
+ * Returns the active Primary destination for the current runtime broadcast session.
+ * 1. If the user-designated primary destination (from Settings) is currently enabled, it is primary.
+ * 2. If the designated primary is currently deactivated on the main page, falls back to the first active/enabled destination.
+ * 3. As soon as the designated primary is re-enabled on the main page, it automatically reclaims priority.
+ * 4. Falls back to designated primary or first destination if none are enabled.
+ */
+function getActivePrimaryDestination() {
+  if (!state.destinations || state.destinations.length === 0) return null;
+  const designated = state.destinations.find((d) => d.isPrimary);
+  if (designated && designated.enabled) {
+    return designated;
+  }
+  const fallback = state.destinations.find((d) => d.enabled);
+  if (fallback) {
+    return fallback;
+  }
+  return designated || state.destinations[0] || null;
 }
 
 /**
@@ -590,6 +1682,7 @@ function saveDestinations() {
   localStorage.setItem('simple_streamer_destinations', JSON.stringify(state.destinations));
   renderDestinationsPills();
   renderDestinationsList();
+  updateSettingsMenuSubtitles();
   syncNativePluginConfig();
   updateActionBtnState();
 
@@ -642,22 +1735,39 @@ function renderDestinationsPills() {
     emptyBtn.className = 'dest-pill';
     emptyBtn.style.borderStyle = 'dashed';
     emptyBtn.style.color = '#38bdf8';
-    emptyBtn.innerHTML = '+ Connect your first platform';
-    emptyBtn.onclick = () => toggleSettingsPanel(true);
+    emptyBtn.innerHTML = t('connectFirstPlatform');
+    emptyBtn.onclick = () => navigateTo('destinations');
     el.destinationsPills.appendChild(emptyBtn);
     return;
   }
 
+  const activePrimary = getActivePrimaryDestination();
+
   state.destinations.forEach((dest) => {
+    const isRuntimePrimary = Boolean(dest.enabled && activePrimary && activePrimary.id === dest.id);
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.className = `dest-pill ${dest.enabled ? 'active' : 'disabled'}`;
-    pill.title = `${dest.name} - Click to toggle`;
+    pill.title = isRuntimePrimary
+      ? (state.isStreaming ? `${dest.name} (${t('anchorPlatformTitle')}) - ${t('anchorPlatformTip')}` : `${dest.name} (${t('primaryBadge')})`)
+      : `${dest.name}`;
 
     const icon = PLATFORM_ICONS[dest.platform] || '';
-    pill.innerHTML = `${icon} <span>${dest.name}</span>`;
+    pill.innerHTML = `${icon} <span>${isRuntimePrimary ? '★ ' : ''}${dest.name}</span>`;
     pill.onclick = () => {
-      dest.enabled = !dest.enabled;
+      if (state.isStreaming) {
+        if (isRuntimePrimary && dest.enabled) {
+          if (!confirm(t('confirmAnchorToggle', { name: dest.name }))) {
+            return;
+          }
+        }
+        dest.enabled = !dest.enabled;
+      } else {
+        dest.enabled = !dest.enabled;
+        // The designated primary set in Settings remains permanent in dest.isPrimary.
+        // getActivePrimaryDestination() automatically promotes the next active channel
+        // when deactivated, and restores priority immediately when re-enabled.
+      }
       saveDestinations();
     };
 
@@ -675,7 +1785,7 @@ function renderDestinationsList() {
   if (state.destinations.length === 0) {
     el.destinationsList.innerHTML = `
       <div style="text-align: center; padding: 20px 10px; color: #94a3b8; font-size: 11px;">
-        No broadcast destinations configured.<br>Click "+ Add Platform" above to link a channel or page.
+        ${t('noDestinationsConfigured')}
       </div>
     `;
     return;
@@ -686,22 +1796,53 @@ function renderDestinationsList() {
     card.className = 'destination-card';
 
     const icon = PLATFORM_ICONS[dest.platform] || '';
-    const needsAuthSync = (dest.platform === 'twitch' || dest.platform === 'kick') && (!dest.credentials?.refreshToken || dest.statusWarning);
+    const hasStreamKey = Boolean(dest.credentials?.streamKey || dest.streamKey);
+    const hasRefreshToken = Boolean(dest.credentials?.refreshToken);
+    const hasOAuth = !!(
+      dest.credentials?.userToken ||
+      dest.credentials?.refreshToken ||
+      dest.credentials?.accessToken
+    );
+    // If the destination has a stream key or refresh token, background refresh / RTMP handles it automatically.
+    // Never show "Sync Token" if a valid key or refresh token exists.
+    const needsAuthSync = (dest.platform === 'twitch' || dest.platform === 'kick') && !hasStreamKey && !hasRefreshToken && !hasOAuth;
     const authSyncHtml = needsAuthSync
-      ? `<button type="button" class="btn-sync-token" id="sync_${dest.id}" style="font-size: 10px; padding: 2px 8px; background: #38bdf8; color: #0f172a; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; margin-right: 6px;">Sync Title Token</button>`
+      ? `<button type="button" class="btn-sync-token" id="sync_${dest.id}" style="font-size: 10px; padding: 2px 8px; background: #38bdf8; color: #0f172a; border: none; border-radius: 4px; font-weight: 700; cursor: pointer;" title="${t('syncTokenTip')}">${t('syncToken')}</button>`
+      : '';
+
+    const isPri = !!dest.isPrimary;
+    const primaryBadge = isPri
+      ? `<div class="badge-primary-wrapper">
+          <span class="badge-primary">${t('primaryBadge')}</span>
+          <div class="badge-tooltip">
+            <strong style="color: #f59e0b; display: block; margin-bottom: 2px;">${t('anchorPlatformTitle')}</strong>
+            ${t('anchorPlatformTip')}
+          </div>
+        </div>`
+      : '';
+
+    const makePrimaryHtml = !isPri
+      ? `<button type="button" class="btn-make-primary" id="pri_${dest.id}" style="font-size: 10px; padding: 2px 8px; background: #1e2434; color: #94a3b8; border: 1px solid #334155; border-radius: 4px; cursor: pointer; font-weight: 500;" title="${t('makePrimary')}">${t('makePrimary')}</button>`
       : '';
 
     card.innerHTML = `
-      <div class="destination-card-left">
+      <div class="destination-card-left" style="display: flex; align-items: center; gap: 6px;">
         ${icon}
         <span class="destination-name">${dest.name}</span>
-        ${needsAuthSync ? '<span style="font-size: 9px; color: #f59e0b; margin-left: 6px;">(Title sync needs auth)</span>' : ''}
+        ${primaryBadge}
       </div>
       <div class="destination-card-right">
+        ${makePrimaryHtml}
         ${authSyncHtml}
-        <button type="button" class="btn-icon-del" id="del_${dest.id}" title="Remove destination">✕</button>
+        <button type="button" class="btn-icon-del" id="del_${dest.id}" title="${t('removeDestinationTip')}">✕</button>
       </div>
     `;
+
+    // Set Primary destination handler
+    const priBtn = card.querySelector(`#pri_${dest.id}`);
+    if (priBtn) {
+      priBtn.onclick = () => setPrimaryDestination(dest.id);
+    }
 
     // Re-sync auth token
     const syncBtn = card.querySelector(`#sync_${dest.id}`);
@@ -715,8 +1856,11 @@ function renderDestinationsList() {
     // Delete destination
     const delBtn = card.querySelector(`#del_${dest.id}`);
     delBtn.onclick = () => {
-      if (confirm(`Remove "${dest.name}" from Simple Streamer?`)) {
+      if (confirm(t('confirmRemoveDest', { name: dest.name }))) {
         state.destinations = state.destinations.filter((d) => d.id !== dest.id);
+        if (isPri && state.destinations.length > 0) {
+          state.destinations[0].isPrimary = true;
+        }
         saveDestinations();
       }
     };
@@ -761,7 +1905,7 @@ async function validateSingleDestination(destId) {
     if (hasDirectKey) {
       dest.status = 'valid';
       dest.statusError = null;
-      dest.statusWarning = err.message;
+      dest.statusWarning = null;
     } else {
       dest.status = 'invalid';
       dest.statusError = err.message;
@@ -811,19 +1955,36 @@ async function validateAllDestinations() {
             found.statusError = null;
             found.statusWarning = null;
           } else if (hasDirectKey) {
-            // Direct stream key is present; video broadcast works directly even if OAuth title update token expired
+            // Direct stream key is present; video broadcast works directly without manual token intervention
             found.status = 'valid';
             found.statusError = null;
-            found.statusWarning = r.error || 'Token expired; streaming with direct RTMP.';
-            logDiag(`ℹ️ Destination "${found.name}": ${found.statusWarning}`);
+            found.statusWarning = null;
+            logDiag(`✓ Destination "${found.name}": RTMP stream key ready.`);
           } else {
             found.status = 'invalid';
             found.statusError = r.error || null;
           }
           if (r.channelName && !found.name) found.name = r.channelName;
-          if (r.streamKey && !found.credentials.streamKey) found.credentials.streamKey = r.streamKey;
-          if (r.streamName && !found.credentials.streamName) found.credentials.streamName = r.streamName;
-          if (r.ingestionAddress && !found.credentials.ingestionAddress) found.credentials.ingestionAddress = r.ingestionAddress;
+          if (r.streamKey && !found.credentials?.streamKey) {
+            found.credentials = found.credentials || {};
+            found.credentials.streamKey = r.streamKey;
+          }
+          if (r.streamName && !found.credentials?.streamName) {
+            found.credentials = found.credentials || {};
+            found.credentials.streamName = r.streamName;
+          }
+          if (r.ingestionAddress && !found.credentials?.ingestionAddress) {
+            found.credentials = found.credentials || {};
+            found.credentials.ingestionAddress = r.ingestionAddress;
+          }
+          if (r.userToken) {
+            found.credentials = found.credentials || {};
+            found.credentials.userToken = r.userToken;
+          }
+          if (r.refreshToken) {
+            found.credentials = found.credentials || {};
+            found.credentials.refreshToken = r.refreshToken;
+          }
         }
       });
     }
@@ -845,17 +2006,17 @@ async function validateAllDestinations() {
  * Show Discovery & Confirmation Modal Card
  */
 function showDiscovery(title, contentHtml, onConfirm) {
-  toggleSettingsPanel(true);
-  el.discoveryTitle.textContent = title;
-  el.discoveryBody.innerHTML = contentHtml;
-  el.discoveryCard.style.display = 'block';
+  navigateTo('destinations');
+  if (el.discoveryTitle) el.discoveryTitle.textContent = title;
+  if (el.discoveryBody) el.discoveryBody.innerHTML = contentHtml;
+  if (el.discoveryCard) el.discoveryCard.style.display = 'block';
   state.discoveryCallback = onConfirm;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function hideDiscovery() {
-  el.discoveryCard.style.display = 'none';
-  el.discoveryBody.innerHTML = '';
+  if (el.discoveryCard) el.discoveryCard.style.display = 'none';
+  if (el.discoveryBody) el.discoveryBody.innerHTML = '';
   state.discoveryCallback = null;
 }
 
@@ -1131,6 +2292,7 @@ function startTwitchPoll(sessionId) {
       const data = await res.json();
       if (data.ok && data.userToken) {
         clearInterval(poll);
+        clearAlert();
         fetch('http://127.0.0.1:45455/focus-obs', { mode: 'no-cors' }).catch(() => {});
         promptConfirmTwitch(data);
       } else if (data.error) {
@@ -1139,6 +2301,11 @@ function startTwitchPoll(sessionId) {
       }
     } catch (_) {}
   }, 1500);
+
+  showAlert('CONNECTING TWITCH', 'Opened Twitch in your browser. Log in and authorize Simple Streamer to link your stream key and enable title sync (Free).', [
+    { label: 'ENTER KEY MANUALLY', onClick: () => { clearInterval(poll); promptAddTwitch(); } },
+    { label: 'CANCEL', onClick: () => { clearInterval(poll); clearAlert(); } },
+  ]);
 }
 
 function promptConfirmTwitch(data) {
@@ -1236,6 +2403,7 @@ function startKickPoll(sessionId) {
       const data = await res.json();
       if (data.ok && (data.userToken || data.channelName)) {
         clearInterval(poll);
+        clearAlert();
         fetch('http://127.0.0.1:45455/focus-obs', { mode: 'no-cors' }).catch(() => {});
         promptConfirmKick(data);
       } else if (data.error) {
@@ -1244,6 +2412,11 @@ function startKickPoll(sessionId) {
       }
     } catch (_) {}
   }, 1500);
+
+  showAlert('CONNECTING KICK', 'Opened Kick in your browser. Log in and authorize Simple Streamer to link your stream key and enable title sync (Free).', [
+    { label: 'ENTER KEY MANUALLY', onClick: () => { clearInterval(poll); promptAddKick(); } },
+    { label: 'CANCEL', onClick: () => { clearInterval(poll); clearAlert(); } },
+  ]);
 }
 
 function promptConfirmKick(data) {
@@ -1341,6 +2514,625 @@ function promptConfirmKick(data) {
   const btnDash = document.getElementById('btnOpenKickDash');
   if (btnDash) {
     btnDash.onclick = () => openExternalUrl('https://kick.com/dashboard/settings/stream');
+  }
+}
+
+/**
+ * Prompt User to Configure YouTube Destination (Pro 1-Click OAuth or Manual Stream Key)
+ */
+function promptAddYouTube() {
+  const isPro = Boolean(currentAccountSession && (currentAccountSession.isPro || currentAccountSession.is_founding_member));
+  if (isPro) {
+    startYouTubeOAuthFlow();
+  } else {
+    promptManualYouTubeKey(false);
+  }
+}
+
+async function startYouTubeOAuthFlow() {
+  prepareAuthSessions();
+  await openExternalUrl(state.ytAuthUrl);
+  logDiag('Waiting for YouTube authorization in browser...');
+  startYouTubePoll(state.ytSessionId);
+  showAlert(
+    'CONNECTING YOUTUBE',
+    'Opened Google sign-in in your browser. Select your YouTube channel to link your broadcast directly.',
+    [
+      { label: 'USE STREAM KEY INSTEAD', onClick: () => promptManualYouTubeKey(true) },
+      { label: 'CANCEL', onClick: () => clearAlert() },
+    ],
+    'info'
+  );
+}
+
+function promptManualYouTubeKey(isProUser = false) {
+  const isPro = Boolean(isProUser || (currentAccountSession && (currentAccountSession.isPro || currentAccountSession.is_founding_member)));
+  const offer = getProOffer();
+
+  const headerNotice = isPro
+    ? `
+      <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); padding: 9px 12px; border-radius: 6px; font-size: 11px; color: #bfdbfe; line-height: 1.45;">
+        ℹ️ <strong>Manual Stream Key Mode:</strong><br>
+        Using a manual stream key bypasses automated 1-click broadcast creation.<br>
+        <button type="button" id="btnSwitchToYtOAuth" style="margin-top: 6px; background: #1e3a8a; border: 1px solid #3b82f6; color: #93c5fd; font-weight: 700; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;">⚡ Connect via Google 1-Click OAuth</button>
+      </div>
+    `
+    : `
+      <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 9px 12px; border-radius: 6px; font-size: 11px; color: #fde68a; line-height: 1.45;">
+        ⚡ <strong>Want 1-click broadcasts?</strong><br>
+        Start your live stream directly from OBS with your title, description, and thumbnail synced across platforms. <button type="button" id="btnYtUpgradePro" style="background: none; border: none; color: #fbbf24; font-weight: 800; cursor: pointer; text-decoration: underline; padding: 0;">Upgrade to Pro ↗</button><br>
+        <span style="display: block; margin-top: 4px; color: #94a3b8;">Or enter your <strong>YouTube Stream Key</strong> below to stream for free:</span>
+      </div>
+    `;
+
+  const html = `
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      ${headerNotice}
+
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Channel / Destination Name</label>
+        <input type="text" id="ytChannelName" placeholder="My YouTube Channel" value="YouTube Live" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px;" />
+      </div>
+
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 11px; font-weight: 700; color: #cbd5e1;">YouTube Stream Key</label>
+          <button type="button" id="btnOpenYtStudio" style="background: none; border: none; color: #38bdf8; font-size: 10px; cursor: pointer; text-decoration: underline; padding: 0;">Open YouTube Studio ↗</button>
+        </div>
+        <input type="password" id="ytStreamKey" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace;" />
+      </div>
+    </div>
+  `;
+
+  showDiscovery('Add YouTube Destination', html, async () => {
+    const channelName = (document.getElementById('ytChannelName')?.value || 'YouTube Live').trim();
+    const streamKey = (document.getElementById('ytStreamKey')?.value || '').trim();
+
+    if (!streamKey) {
+      showAlert('STREAM KEY REQUIRED', 'Please enter your YouTube stream key from YouTube Studio Live dashboard.', [], 'warning');
+      return;
+    }
+
+    const dest = {
+      id: 'yt_' + Date.now(),
+      platform: 'youtube',
+      name: channelName,
+      accountName: channelName,
+      enabled: true,
+      status: 'valid',
+      statusWarning: null,
+      statusError: null,
+      credentials: {
+        serverUrl: 'rtmp://a.rtmp.youtube.com/live2',
+        streamKey,
+      },
+    };
+
+    state.destinations.push(dest);
+    if (!state.destinations.some((d) => d.isPrimary)) {
+      dest.isPrimary = true;
+    }
+    saveDestinations();
+    hideDiscovery();
+    renderDestinationsList();
+    renderDestinationsPills();
+    syncNativePluginConfig();
+    updateActionBtnState();
+    logDiag(`✓ Added YouTube Stream Key Destination: ${channelName}`);
+    showAlert('YOUTUBE ADDED', `Added ${channelName} to your broadcast destinations.`, [], 'success');
+  });
+
+  const btnUp = document.getElementById('btnYtUpgradePro');
+  if (btnUp) {
+    btnUp.onclick = () => openExternalUrl(offer.paymentUrl);
+  }
+  const btnStudio = document.getElementById('btnOpenYtStudio');
+  if (btnStudio) {
+    btnStudio.onclick = () => openExternalUrl('https://studio.youtube.com/channel/UC/livestreaming');
+  }
+  const btnSwitchOAuth = document.getElementById('btnSwitchToYtOAuth');
+  if (btnSwitchOAuth) {
+    btnSwitchOAuth.onclick = () => {
+      hideDiscovery();
+      startYouTubeOAuthFlow();
+    };
+  }
+}
+
+/**
+ * Prompt User to Configure Facebook Destination (Pro 1-Click OAuth or Manual Stream Key)
+ */
+function promptAddFacebook() {
+  const isPro = Boolean(currentAccountSession && (currentAccountSession.isPro || currentAccountSession.is_founding_member));
+  if (isPro) {
+    startFacebookOAuthFlow();
+  } else {
+    promptManualFacebookKey(false);
+  }
+}
+
+async function startFacebookOAuthFlow() {
+  prepareAuthSessions();
+  await openExternalUrl(state.fbAuthUrl);
+  logDiag('Waiting for Facebook authorization in browser...');
+  startFacebookPoll(state.fbSessionId);
+  showAlert(
+    'CONNECTING FACEBOOK',
+    'Opened Facebook sign-in in your browser. Select your Facebook Page to link 1-click live broadcasts.',
+    [
+      { label: 'USE STREAM KEY INSTEAD', onClick: () => promptManualFacebookKey(true) },
+      { label: 'CANCEL', onClick: () => clearAlert() },
+    ],
+    'info'
+  );
+}
+
+function promptManualFacebookKey(isProUser = false) {
+  const isPro = Boolean(isProUser || (currentAccountSession && (currentAccountSession.isPro || currentAccountSession.is_founding_member)));
+  const offer = getProOffer();
+
+  const headerNotice = isPro
+    ? `
+      <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); padding: 9px 12px; border-radius: 6px; font-size: 11px; color: #bfdbfe; line-height: 1.45;">
+        ℹ️ <strong>Manual Stream Key Mode:</strong><br>
+        Using a manual stream key for Facebook Live.<br>
+        <button type="button" id="btnSwitchToFbOAuth" style="margin-top: 6px; background: #1e3a8a; border: 1px solid #3b82f6; color: #93c5fd; font-weight: 700; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;">⚡ Connect via Facebook 1-Click OAuth</button>
+      </div>
+    `
+    : `
+      <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 9px 12px; border-radius: 6px; font-size: 11px; color: #fde68a; line-height: 1.45;">
+        ⚡ <strong>Want 1-click broadcasts?</strong><br>
+        Start your live stream directly from OBS with your title, description, and thumbnail synced across platforms. <button type="button" id="btnFbUpgradePro" style="background: none; border: none; color: #fbbf24; font-weight: 800; cursor: pointer; text-decoration: underline; padding: 0;">Upgrade to Pro ↗</button><br>
+        <span style="display: block; margin-top: 4px; color: #94a3b8;">Or enter your <strong>Facebook Stream Key</strong> below to stream for free:</span>
+      </div>
+    `;
+
+  const html = `
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      ${headerNotice}
+
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Page / Destination Name</label>
+        <input type="text" id="fbPageName" placeholder="My Facebook Page" value="Facebook Live" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px;" />
+      </div>
+
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Facebook Stream Key (or Persistent Key)</label>
+          <button type="button" id="btnOpenFbProducer" style="background: none; border: none; color: #38bdf8; font-size: 10px; cursor: pointer; text-decoration: underline; padding: 0;">Open Live Producer ↗</button>
+        </div>
+        <input type="password" id="fbStreamKey" placeholder="FB-..." style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace;" />
+      </div>
+    </div>
+  `;
+
+  showDiscovery('Add Facebook Destination', html, async () => {
+    const pageName = (document.getElementById('fbPageName')?.value || 'Facebook Live').trim();
+    const streamKey = (document.getElementById('fbStreamKey')?.value || '').trim();
+
+    if (!streamKey) {
+      showAlert('STREAM KEY REQUIRED', 'Please enter your Facebook stream key from Live Producer.', [], 'warning');
+      return;
+    }
+
+    const dest = {
+      id: 'fb_' + Date.now(),
+      platform: 'facebook',
+      name: pageName,
+      accountName: pageName,
+      enabled: true,
+      status: 'valid',
+      statusWarning: null,
+      statusError: null,
+      credentials: {
+        serverUrl: 'rtmps://live-api-s.facebook.com:443/rtmp/',
+        streamKey,
+      },
+    };
+
+    state.destinations.push(dest);
+    if (!state.destinations.some((d) => d.isPrimary)) {
+      dest.isPrimary = true;
+    }
+    saveDestinations();
+    hideDiscovery();
+    renderDestinationsList();
+    renderDestinationsPills();
+    syncNativePluginConfig();
+    updateActionBtnState();
+    logDiag(`✓ Added Facebook Stream Key Destination: ${pageName}`);
+    showAlert('FACEBOOK ADDED', `Added ${pageName} to your broadcast destinations.`, [], 'success');
+  });
+
+  const btnUp = document.getElementById('btnFbUpgradePro');
+  if (btnUp) {
+    btnUp.onclick = () => openExternalUrl(offer.paymentUrl);
+  }
+  const btnProd = document.getElementById('btnOpenFbProducer');
+  if (btnProd) {
+    btnProd.onclick = () => openExternalUrl('https://www.facebook.com/live/producer');
+  }
+  const btnSwitchOAuth = document.getElementById('btnSwitchToFbOAuth');
+  if (btnSwitchOAuth) {
+    btnSwitchOAuth.onclick = () => {
+      hideDiscovery();
+      startFacebookOAuthFlow();
+    };
+  }
+}
+
+/**
+ * Prompt User to Configure Kick Destination via Stream Key
+ */
+function promptAddKick() {
+  const html = `
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 9px 12px; border-radius: 6px; font-size: 11px; color: #a7f3d0; line-height: 1.45;">
+        ⚡ <strong>Free 1-Click Sign-In with Title Sync:</strong><br>
+        Sign in with your Kick account to automatically sync your stream title from OBS.<br>
+        <button type="button" id="btnKickOAuthConnect" style="margin-top: 6px; background: #059669; border: none; color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;">⚡ Sign In with Kick ↗</button>
+      </div>
+
+      <div style="font-size: 10px; color: #94a3b8; text-align: center; margin: 2px 0;">── or enter Stream Key manually ──</div>
+
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Kick Channel Name (Username)</label>
+        <input type="text" id="kickChannelName" placeholder="e.g. MyKickChannel" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px;" />
+      </div>
+
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Kick Stream Key</label>
+          <button type="button" id="btnOpenKickDash" style="background: none; border: none; color: #38bdf8; font-size: 10px; cursor: pointer; text-decoration: underline; padding: 0;">Open Kick Dashboard ↗</button>
+        </div>
+        <input type="password" id="kickStreamKey" placeholder="sk_us-west-..." style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace;" />
+      </div>
+
+      <div style="font-size: 10px; color: #94a3b8; line-height: 1.4;">
+        Find your stream key in Kick.com → Creator Dashboard → Settings → Stream.
+      </div>
+    </div>
+  `;
+
+  showDiscovery('Add Kick Destination', html, async () => {
+    const channelName = (document.getElementById('kickChannelName')?.value || 'Kick Stream').trim();
+    const streamKey = (document.getElementById('kickStreamKey')?.value || '').trim();
+
+    if (!streamKey) {
+      showAlert('STREAM KEY REQUIRED', 'Please enter your Kick stream key.');
+      return;
+    }
+
+    const cleanSlug = channelName.replace(/[^a-zA-Z0-9_-]/g, '') || 'kick';
+    const dest = {
+      id: 'kick_' + Date.now(),
+      platform: 'kick',
+      name: `Kick (${channelName})`,
+      accountName: channelName,
+      enabled: true,
+      status: 'valid',
+      statusWarning: null,
+      statusError: null,
+      credentials: {
+        channelSlug: cleanSlug,
+        serverUrl: 'rtmps://fa723ac112e7.global-contribute.live-video.net:443/app/',
+        streamKey,
+      },
+    };
+
+    state.destinations.push(dest);
+    if (!state.destinations.some((d) => d.isPrimary)) {
+      dest.isPrimary = true;
+    }
+    saveDestinations();
+    hideDiscovery();
+    renderDestinationsList();
+    renderDestinationsPills();
+    syncNativePluginConfig();
+    updateActionBtnState();
+    logDiag(`✓ Added Kick Channel: ${channelName}`);
+    showAlert('KICK ADDED', `Added Kick (${channelName}) to your broadcast destinations.`);
+  });
+
+  const btnOAuth = document.getElementById('btnKickOAuthConnect');
+  if (btnOAuth) {
+    btnOAuth.onclick = async () => {
+      hideDiscovery();
+      const sessionId = generateSecureSessionId('session_kc');
+      await openExternalUrl(`${state.config.backendUrl}/auth/kick/start?session=${sessionId}`);
+      logDiag('Waiting for Kick authorization in browser...');
+      startKickPoll(sessionId);
+    };
+  }
+
+  const btnDash = document.getElementById('btnOpenKickDash');
+  if (btnDash) {
+    btnDash.onclick = () => openExternalUrl('https://kick.com/dashboard/settings/stream');
+  }
+}
+
+/**
+ * Prompt User to Configure Twitch Destination via Stream Key
+ */
+function promptAddTwitch() {
+  const html = `
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="background: rgba(147, 51, 234, 0.1); border: 1px solid rgba(147, 51, 234, 0.3); padding: 9px 12px; border-radius: 6px; font-size: 11px; color: #d8b4fe; line-height: 1.45;">
+        ⚡ <strong>Free 1-Click Sign-In with Title Sync:</strong><br>
+        Sign in with your Twitch account to automatically link your stream key and sync your stream title from OBS.<br>
+        <button type="button" id="btnTwitchOAuthConnect" style="margin-top: 6px; background: #7c3aed; border: none; color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;">⚡ Sign In with Twitch ↗</button>
+      </div>
+
+      <div style="font-size: 10px; color: #94a3b8; text-align: center; margin: 2px 0;">── or enter Stream Key manually ──</div>
+
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Twitch Channel Name</label>
+        <input type="text" id="twitchChannelName" placeholder="e.g. MyTwitchChannel" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px;" />
+      </div>
+
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Twitch Primary Stream Key</label>
+          <button type="button" id="btnOpenTwitchDash" style="background: none; border: none; color: #38bdf8; font-size: 10px; cursor: pointer; text-decoration: underline; padding: 0;">Open Twitch Settings ↗</button>
+        </div>
+        <input type="password" id="twitchStreamKey" placeholder="live_..." style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace;" />
+      </div>
+
+      <div style="font-size: 10px; color: #94a3b8; line-height: 1.4;">
+        Find your stream key in Twitch Creator Dashboard → Settings → Stream.
+      </div>
+    </div>
+  `;
+
+  showDiscovery('Add Twitch Destination', html, async () => {
+    const channelName = (document.getElementById('twitchChannelName')?.value || 'Twitch Stream').trim();
+    const streamKey = (document.getElementById('twitchStreamKey')?.value || '').trim();
+
+    if (!streamKey) {
+      showAlert('STREAM KEY REQUIRED', 'Please enter your Twitch stream key.');
+      return;
+    }
+
+    const dest = {
+      id: 'twitch_' + Date.now(),
+      platform: 'twitch',
+      name: `Twitch (${channelName})`,
+      accountName: channelName,
+      enabled: true,
+      status: 'valid',
+      statusWarning: null,
+      statusError: null,
+      credentials: {
+        channelName,
+        serverUrl: 'rtmp://live.twitch.tv/app/',
+        streamKey,
+      },
+    };
+
+    state.destinations.push(dest);
+    if (!state.destinations.some((d) => d.isPrimary)) {
+      dest.isPrimary = true;
+    }
+    saveDestinations();
+    hideDiscovery();
+    renderDestinationsList();
+    renderDestinationsPills();
+    syncNativePluginConfig();
+    updateActionBtnState();
+    logDiag(`✓ Added Twitch Channel: ${channelName}`);
+    showAlert('TWITCH ADDED', `Added Twitch (${channelName}) to your broadcast destinations.`);
+  });
+
+  const btnOAuth = document.getElementById('btnTwitchOAuthConnect');
+  if (btnOAuth) {
+    btnOAuth.onclick = async () => {
+      hideDiscovery();
+      const sessionId = generateSecureSessionId('session_tw');
+      await openExternalUrl(`${state.config.backendUrl}/auth/twitch/start?session=${sessionId}`);
+      logDiag('Waiting for Twitch authorization in browser...');
+      startTwitchPoll(sessionId);
+    };
+  }
+
+  const btnDash = document.getElementById('btnOpenTwitchDash');
+  if (btnDash) {
+    btnDash.onclick = () => openExternalUrl('https://dashboard.twitch.tv/settings/stream');
+  }
+}
+
+/**
+ * Prompt User to Configure Custom RTMP Destination (TikTok, X / Twitter, Rumble, etc.)
+ */
+function promptAddCustomRtmp() {
+  const html = `
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">${t('platformNameLabel')}</label>
+        <input type="text" id="customRtmpName" placeholder="${t('platformNamePlaceholder')}" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 6px; padding: 7px 10px; font-size: 12px;" value="Custom RTMP" />
+      </div>
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">${t('serverUrlLabel')}</label>
+        <input type="text" id="customRtmpServer" placeholder="${t('serverUrlPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace;" />
+      </div>
+      <div>
+        <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">${t('streamKeyLabel')}</label>
+        <input type="password" id="customRtmpKey" placeholder="${t('streamKeyPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace;" />
+      </div>
+      <div style="font-size: 10px; color: #94a3b8; line-height: 1.4;">
+        ${t('customRtmpTip')}
+      </div>
+    </div>
+  `;
+
+  showDiscovery(t('addCustomRtmpTitle'), html, async () => {
+    const nameEl = document.getElementById('customRtmpName');
+    const serverEl = document.getElementById('customRtmpServer');
+    const keyEl = document.getElementById('customRtmpKey');
+
+    const name = (nameEl?.value || 'Custom RTMP').trim();
+    const serverUrl = (serverEl?.value || '').trim();
+    const streamKey = (keyEl?.value || '').trim();
+
+    if (!serverUrl || (!serverUrl.startsWith('rtmp://') && !serverUrl.startsWith('rtmps://'))) {
+      showAlert('INVALID SERVER URL', 'RTMP Server URL must start with rtmp:// or rtmps://');
+      return;
+    }
+
+    if (!streamKey) {
+      showAlert('STREAM KEY REQUIRED', 'Please enter a stream key for this destination.');
+      return;
+    }
+
+    const dest = {
+      id: 'custom_' + Date.now(),
+      platform: 'custom',
+      name: name,
+      accountName: name,
+      enabled: true,
+      status: 'valid',
+      statusWarning: null,
+      statusError: null,
+      credentials: {
+        serverUrl,
+        streamKey,
+      },
+    };
+
+    state.destinations.push(dest);
+    if (!state.destinations.some((d) => d.isPrimary)) {
+      dest.isPrimary = true;
+    }
+    saveDestinations();
+    hideDiscovery();
+    renderDestinationsList();
+    renderDestinationsPills();
+    syncNativePluginConfig();
+    updateActionBtnState();
+    logDiag(`✓ Added Custom RTMP Destination: ${name} (${serverUrl})`);
+    showAlert('DESTINATION ADDED', `Added ${name} to your broadcast destinations.`);
+  });
+}
+
+/**
+ * Checks whether user has edited the broadcast title or description while actively streaming.
+ * Displays the "[🔄 Update Live Stream Info]" button if changes are pending.
+ */
+function checkLiveMetadataDirty() {
+  if (!el.liveMetadataUpdateBar) return;
+  if (!state.isStreaming || !state.activeBroadcast?.destinations?.length) {
+    el.liveMetadataUpdateBar.style.display = 'none';
+    return;
+  }
+  const title = (el.lessonTitle?.value || '').trim();
+  const desc = (el.lessonDescription?.value || '').trim();
+  const origTitle = (state.activeBroadcast?.title || '').trim();
+  const origDesc = (state.activeBroadcast?.description || '').trim();
+  const isChanged = (title !== origTitle || desc !== origDesc);
+
+  const isPro = Boolean(currentAccountSession && (currentAccountSession.isPro || currentAccountSession.is_founding_member));
+  if (isChanged && !isPro) {
+    el.liveMetadataUpdateBar.style.display = 'block';
+    if (el.btnUpdateLiveMetadata) {
+      el.btnUpdateLiveMetadata.disabled = false;
+      el.btnUpdateLiveMetadata.style.opacity = '0.9';
+      el.btnUpdateLiveMetadata.style.cursor = 'pointer';
+    }
+    if (el.btnUpdateLiveMetadataText) {
+      el.btnUpdateLiveMetadataText.textContent = '🔒 Mid-Stream Updates (Pro Only) — Upgrade';
+    }
+    return;
+  }
+
+  el.liveMetadataUpdateBar.style.display = isChanged ? 'block' : 'none';
+  if (el.btnUpdateLiveMetadata) {
+    el.btnUpdateLiveMetadata.disabled = false;
+    el.btnUpdateLiveMetadata.style.opacity = '1';
+    el.btnUpdateLiveMetadata.style.cursor = 'pointer';
+  }
+  if (el.btnUpdateLiveMetadataText) {
+    el.btnUpdateLiveMetadataText.textContent = t('btnUpdateLiveInfo');
+  }
+}
+
+/**
+ * Pushes live title and description changes across all active destinations mid-broadcast.
+ */
+async function handleUpdateLiveMetadata() {
+  if (!state.isStreaming || !state.activeBroadcast?.destinations?.length) return;
+  const newTitle = (el.lessonTitle?.value || '').trim();
+  const newDesc = (el.lessonDescription?.value || '').trim();
+
+  if (!newTitle) {
+    showAlert('TITLE REQUIRED', 'Please enter a valid title.');
+    return;
+  }
+
+  const isPro = Boolean(currentAccountSession && (currentAccountSession.isPro || currentAccountSession.is_founding_member));
+  if (!isPro) {
+    const offer = getProOffer();
+    showAlert('PRO FEATURE', 'Mid-stream title updates require Simple Streamer Pro.', [
+      { label: offer.alertCtaLabel, onClick: () => openExternalUrl(offer.paymentUrl) },
+      { label: 'SIGN IN', onClick: () => startAccountSignInFlow() },
+    ]);
+    checkLiveMetadataDirty();
+    return;
+  }
+
+  if (el.btnUpdateLiveMetadata) el.btnUpdateLiveMetadata.disabled = true;
+  if (el.btnUpdateLiveMetadataText) el.btnUpdateLiveMetadataText.textContent = t('updatingLiveInfo');
+
+  try {
+    const token = getAuthToken();
+    const hwid = await syncDeviceHwidFromBridge();
+    const res = await fetch(`${state.config.backendUrl}/reconcile-metadata`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(hwid ? { 'x-device-hwid': hwid } : {}),
+        ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
+      },
+      body: JSON.stringify({
+        token,
+        hwid,
+        title: newTitle,
+        description: newDesc,
+        destinations: state.activeBroadcast.destinations.map((d) => ({
+          id: d.id,
+          platform: d.platform,
+          broadcastId: d.broadcastId,
+          liveVideoId: d.liveVideoId,
+          broadcasterId: d.broadcasterId,
+          channelSlug: d.channelSlug,
+          refreshToken: d.refreshToken,
+          accessToken: d.accessToken,
+          userToken: d.userToken,
+        })),
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    state.activeBroadcast.title = newTitle;
+    state.activeBroadcast.description = newDesc;
+    checkLiveMetadataDirty();
+    syncMetadataToBridgeAndRemote(newTitle, newDesc);
+    showAlert('LIVE INFO UPDATED', t('liveInfoUpdated'));
+  } catch (err) {
+    if (err.message === 'PRO_REQUIRED') {
+      showAlert('PRO LICENSE REQUIRED', 'Mid-stream title updates require Simple Streamer Pro.', [
+        { label: 'UNLOCK PRO', onClick: () => startAccountSignInFlow() },
+      ]);
+    } else {
+      showAlert('UPDATE FAILED', t('liveInfoUpdateFailed', { error: err.message }));
+    }
+  } finally {
+    if (el.btnUpdateLiveMetadata) el.btnUpdateLiveMetadata.disabled = false;
+    if (el.btnUpdateLiveMetadataText) el.btnUpdateLiveMetadataText.textContent = t('btnUpdateLiveInfo');
+    checkLiveMetadataDirty();
   }
 }
 
@@ -1449,9 +3241,12 @@ async function handleGoLive() {
     return;
   }
 
+  const activePrimary = getActivePrimaryDestination();
   const enabledTargets = state.destinations.filter((d) => d.enabled);
+  // Sort so active runtime Primary platform is strictly Destination 0
+  enabledTargets.sort((a, b) => (b.id === activePrimary?.id ? 1 : 0) - (a.id === activePrimary?.id ? 1 : 0));
   if (enabledTargets.length === 0) {
-    toggleSettingsPanel(true);
+    navigateTo('destinations');
     showAlert(
       'SELECT DESTINATIONS FIRST',
       'Please enable at least one broadcast destination before starting your stream.'
@@ -1475,17 +3270,30 @@ async function handleGoLive() {
   el.actionBtnText.textContent = 'PREPARING STREAM...';
   logDiag(`Initiating broadcast to ${enabledTargets.length} destination(s): "${title}"`);
 
+  // Capture ephemeral thumbnail before clearing memory
+  const outgoingThumbnail = state.ephemeralThumbnailBase64;
+  clearThumbnail(); // Wipe UI and memory immediately to prevent future session leakage
+
   let gcpResponse = null;
   try {
+    const token = getAuthToken();
+    const hwid = await syncDeviceHwidFromBridge();
     const res = await fetch(`${state.config.backendUrl}/orchestrate-live`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(hwid ? { 'x-device-hwid': hwid } : {}),
+        'x-device-name': 'OBS Studio Workstation',
         ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
       },
       body: JSON.stringify({
+        ...(token ? { token } : {}),
+        ...(hwid ? { hwid } : {}),
+        deviceName: 'OBS Studio Workstation',
         title,
         description,
+        ...(outgoingThumbnail ? { thumbnailBase64: outgoingThumbnail } : {}),
         destinations: enabledTargets.map((d) => ({
           id: d.id,
           platform: d.platform,
@@ -1545,9 +3353,21 @@ async function handleGoLive() {
           eventData: { action: 'LIVE_START_FAILED', error: err.message },
         }).catch(() => {});
       }
-      showAlert('ORCHESTRATION FAILED', `${err.message}. Check your internet connection.`, [
-        { label: 'RETRY', onClick: () => handleGoLive() },
-      ]);
+      if (err.message === 'PRO_REQUIRED' || err.message?.includes('PRO_REQUIRED')) {
+        const offer = getProOffer();
+        showAlert('PRO LICENSE REQUIRED', 'Automated YouTube & Facebook live sync requires Simple Streamer Pro. Switch to Stream Key mode or activate Pro.', [
+          { label: offer.alertCtaLabel, onClick: () => openExternalUrl(offer.paymentUrl) },
+          { label: 'SIGN IN', onClick: () => startAccountSignInFlow() },
+        ]);
+      } else if (err.message === 'DEVICE_LIMIT_REACHED' || err.message?.includes('DEVICE_LIMIT_REACHED')) {
+        showAlert('DEVICE LIMIT REACHED', 'You have reached your 2 active computers limit. Deactivate a machine at simple-streamer.bdjlmn.com/account.', [
+          { label: 'MANAGE DEVICES', onClick: () => openExternalUrl('https://simple-streamer.bdjlmn.com/account') },
+        ]);
+      } else {
+        showAlert('ORCHESTRATION FAILED', `${err.message}. Check your internet connection.`, [
+          { label: 'RETRY', onClick: () => handleGoLive() },
+        ]);
+      }
       return;
     }
   }
@@ -1585,6 +3405,10 @@ async function handleGoLive() {
   }
 
   const successfulDests = returnedDests.filter((d) => d.ok);
+  // Ensure active runtime Primary platform (if successful) is strictly at index 0 for OBS Core
+  successfulDests.sort((a, b) => {
+    return (b.id === activePrimary?.id ? 1 : 0) - (a.id === activePrimary?.id ? 1 : 0);
+  });
   const failedDests = returnedDests.filter((d) => !d.ok);
 
   // Automatically clear any stale error status for destinations that succeeded
@@ -1740,6 +3564,8 @@ function setLiveUI(isLive) {
     setStatus('LIVE', 'live');
     if (el.liveContainer) el.liveContainer.style.display = 'block';
     if (el.inputGroup) el.inputGroup.style.display = 'none';
+    if (el.settingsLiveBar) el.settingsLiveBar.style.display = nav.currentView !== 'broadcast' ? 'flex' : 'none';
+    if (el.destLockedNotice) el.destLockedNotice.style.display = 'block';
 
     el.actionBtn.disabled = false;
     el.actionBtn.className = 'btn-primary stop';
@@ -1748,6 +3574,7 @@ function setLiveUI(isLive) {
     // Populate Real-Time Platform Status Grid
     renderPlatformLiveGrid();
     startTimer();
+    checkLiveMetadataDirty();
 
     // Schedule delayed metadata reconciliation watchdog (8s post-stream start)
     setTimeout(() => {
@@ -1760,6 +3587,9 @@ function setLiveUI(isLive) {
     setStatus('● CONNECTED', 'connected');
     if (el.liveContainer) el.liveContainer.style.display = 'none';
     if (el.inputGroup) el.inputGroup.style.display = 'block';
+    if (el.liveMetadataUpdateBar) el.liveMetadataUpdateBar.style.display = 'none';
+    if (el.settingsLiveBar) el.settingsLiveBar.style.display = 'none';
+    if (el.destLockedNotice) el.destLockedNotice.style.display = 'none';
 
     updateActionBtnState();
 
@@ -2380,15 +4210,47 @@ function prepareAuthSessions() {
  * Initialize Event Handlers
  */
 function initEvents() {
+  // Language Initialization & Dropdown Sync
+  const initialLang = getLanguage();
+  setLanguage(initialLang);
+  if (el.langSelector) {
+    el.langSelector.value = initialLang;
+    el.langSelector.onchange = (e) => {
+      const selected = e.target.value;
+      setLanguage(selected);
+      renderNavigation();
+      renderTemplateOptions();
+      renderDestinationsList();
+      renderDestinationsPills();
+      updateAccountUI(currentAccountSession);
+      updateActionBtnState();
+    };
+  }
+
   // Close / Dismiss Alert Banner
   if (el.alertCloseBtn) {
     el.alertCloseBtn.onclick = () => clearAlert();
   }
 
+  // Close / Dismiss Update Banner
+  if (el.btnCloseUpdateBanner && el.updateBanner) {
+    el.btnCloseUpdateBanner.onclick = () => {
+      el.updateBanner.style.display = 'none';
+      const versionText = el.updateBannerText ? el.updateBannerText.textContent : '';
+      const match = versionText.match(/v(\d+\.\d+\.\d+)/);
+      if (match) {
+        sessionStorage.setItem('dismissed_update_version', match[1]);
+      }
+    };
+  }
+
+  // Check for app updates
+  checkForAppUpdates();
+
   // Main Broadcast Action Button
   el.actionBtn.onclick = () => {
     if (state.isStreaming) {
-      if (confirm('Are you sure you want to END the live broadcast on all platforms?')) {
+      if (confirm(t('confirmEndStream'))) {
         handleEndStream();
       }
     } else {
@@ -2396,25 +4258,94 @@ function initEvents() {
     }
   };
 
-  // Toggle Settings
-  el.toggleDiagBtn.onclick = () => toggleSettingsPanel();
+  // Thumbnail Dropzone & File Ingestion
+  if (el.thumbnailDropzone && el.thumbnailInput) {
+    el.thumbnailDropzone.onclick = (e) => {
+      if (e.target === el.thumbnailClearBtn) return;
+      el.thumbnailInput.click();
+    };
 
-  // Toggle Mobile Remote
-  if (el.toggleRemoteBtn) {
-    el.toggleRemoteBtn.onclick = () => toggleRemotePanel();
+    el.thumbnailInput.onchange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) processThumbnailFile(file);
+    };
+
+    el.thumbnailDropzone.ondragover = (e) => {
+      e.preventDefault();
+      el.thumbnailDropzone.classList.add('dragover');
+    };
+
+    el.thumbnailDropzone.ondragleave = () => {
+      el.thumbnailDropzone.classList.remove('dragover');
+    };
+
+    el.thumbnailDropzone.ondrop = (e) => {
+      e.preventDefault();
+      el.thumbnailDropzone.classList.remove('dragover');
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) processThumbnailFile(file);
+    };
   }
+
+  if (el.thumbnailClearBtn) {
+    el.thumbnailClearBtn.onclick = (e) => {
+      e.stopPropagation();
+      clearThumbnail();
+    };
+  }
+
+  // Broadcast Template Selector & Title Counter Init
+  if (el.templateSelector) {
+    renderTemplateOptions();
+    el.templateSelector.onchange = handleTemplateSelect;
+    syncPresetsWithCloud(false);
+  }
+  updateTitleCounter();
+
+  // Settings Navigation & Subpages
+  if (el.toggleDiagBtn) {
+    el.toggleDiagBtn.onclick = () => handleTopRightAction();
+  }
+  if (el.btnHeaderAccount) {
+    el.btnHeaderAccount.onclick = () => navigateTo('account');
+  }
+  if (el.btnMenuDestinations) {
+    el.btnMenuDestinations.onclick = () => navigateTo('destinations');
+  }
+  if (el.btnMenuRemote) {
+    el.btnMenuRemote.onclick = () => navigateTo('remote');
+  }
+  if (el.btnMenuAccount) {
+    el.btnMenuAccount.onclick = () => navigateTo('account');
+  }
+  if (el.btnMenuGeneral) {
+    el.btnMenuGeneral.onclick = () => navigateTo('general');
+  }
+  if (el.btnReconnectObsSettings) {
+    el.btnReconnectObsSettings.onclick = () => {
+      showAlert('RECONNECTING OBS...', 'Attempting to reconnect to OBS Studio WebSocket...');
+      connectObs();
+    };
+  }
+  if (el.btnResetLocalData) {
+    el.btnResetLocalData.onclick = () => resetAllLocalState();
+  }
+
+  // Account & Device Entitlement Verification
+  loadCachedAccountSession();
+  verifyAccountSession();
 
   // Toggle Add Platform Options Grid
   const collapseAddPlatforms = () => {
     if (el.addPlatformsGrid) el.addPlatformsGrid.style.display = 'none';
-    if (el.btnToggleAddPlatforms) el.btnToggleAddPlatforms.textContent = '+ Add Platform';
+    if (el.btnToggleAddPlatforms) el.btnToggleAddPlatforms.textContent = t('btnAddPlatform');
   };
 
   if (el.btnToggleAddPlatforms && el.addPlatformsGrid) {
     el.btnToggleAddPlatforms.onclick = () => {
       const isHidden = el.addPlatformsGrid.style.display === 'none';
       el.addPlatformsGrid.style.display = isHidden ? 'grid' : 'none';
-      el.btnToggleAddPlatforms.textContent = isHidden ? '✕ Close Platform Options' : '+ Add Platform';
+      el.btnToggleAddPlatforms.textContent = isHidden ? t('btnClosePlatforms') : t('btnAddPlatform');
     };
   }
 
@@ -2435,27 +4366,21 @@ function initEvents() {
 
   // Add YouTube Channel
   if (el.btnAddYt) {
-    el.btnAddYt.onclick = async () => {
+    el.btnAddYt.onclick = () => {
       collapseAddPlatforms();
-      prepareAuthSessions();
-      await openExternalUrl(state.ytAuthUrl);
-      logDiag('Waiting for YouTube Google authorization...');
-      startYouTubePoll(state.ytSessionId);
+      promptAddYouTube();
     };
   }
 
   // Add Facebook Page
   if (el.btnAddFb) {
-    el.btnAddFb.onclick = async () => {
+    el.btnAddFb.onclick = () => {
       collapseAddPlatforms();
-      prepareAuthSessions();
-      await openExternalUrl(state.fbAuthUrl);
-      logDiag('Waiting for Facebook authorization...');
-      startFacebookPoll(state.fbSessionId);
+      promptAddFacebook();
     };
   }
 
-  // Add Twitch Channel (1-Click OAuth)
+  // Add Twitch Channel (1-Click OAuth Sign-In - Free)
   if (el.btnAddTwitch) {
     el.btnAddTwitch.onclick = async () => {
       collapseAddPlatforms();
@@ -2466,7 +4391,7 @@ function initEvents() {
     };
   }
 
-  // Add Kick Channel (1-Click OAuth)
+  // Add Kick Channel (1-Click OAuth Sign-In - Free)
   if (el.btnAddKick) {
     el.btnAddKick.onclick = async () => {
       collapseAddPlatforms();
@@ -2474,6 +4399,21 @@ function initEvents() {
       await openExternalUrl(`${state.config.backendUrl}/auth/kick/start?session=${sessionId}`);
       logDiag('Waiting for Kick authorization in browser...');
       startKickPoll(sessionId);
+    };
+  }
+
+  // Add Custom RTMP (TikTok, X / Twitter, Rumble, etc.)
+  if (el.btnAddCustomRtmp) {
+    el.btnAddCustomRtmp.onclick = () => {
+      collapseAddPlatforms();
+      promptAddCustomRtmp();
+    };
+  }
+
+  // Update Live Stream Info
+  if (el.btnUpdateLiveMetadata) {
+    el.btnUpdateLiveMetadata.onclick = () => {
+      handleUpdateLiveMetadata();
     };
   }
 
@@ -2513,34 +4453,6 @@ function initEvents() {
     scheduleObsReconnect();
   });
 
-  // Metadata Real-Time Two-Way Sync
-  function syncMetadataToBridgeAndRemote() {
-    const titleEl = document.getElementById('lessonTitle');
-    const descEl = document.getElementById('lessonDescription');
-    const title = titleEl ? titleEl.value.trim() : '';
-    const description = descEl ? descEl.value.trim() : '';
-
-    // Persist to local bridge
-    fetch(`http://127.0.0.1:45455/save-title?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`).catch(() => {});
-
-    // Broadcast to mobile remotes via OBS WebSocket CustomEvent
-    if (state.obs && state.obs.isConnected) {
-      state.obs.call('BroadcastCustomEvent', {
-        eventData: {
-          action: 'METADATA_CHANGED',
-          title,
-          description,
-          destinations: (state.destinations || []).map((d) => ({
-            id: d.id,
-            name: d.name || d.platform,
-            platform: d.platform,
-            enabled: d.enabled !== false,
-          })),
-        }
-      }).catch(() => {});
-    }
-  }
-
   // Mobile Remote Custom Events Handshake
   state.obs.on('CustomEvent', async (eventData) => {
     if (!eventData || !eventData.action) return;
@@ -2576,12 +4488,14 @@ function initEvents() {
       if (newTitle !== undefined && titleEl) {
         titleEl.value = newTitle;
         localStorage.setItem('dock_lessonTitle', newTitle);
+        updateTitleCounter();
       }
       if (newDesc !== undefined && descEl) {
         descEl.value = newDesc;
         localStorage.setItem('dock_lessonDescription', newDesc);
       }
       if (newTitle) logDiag(`📱 Broadcast title updated from Remote: "${newTitle}"`);
+      checkLiveMetadataDirty();
     } else if (eventData.action === 'TOGGLE_DESTINATION') {
       if (state.isStreaming || state.isPreparing) {
         logDiag('⚠️ Cannot toggle platforms while broadcast is active/preparing.');
@@ -2604,6 +4518,7 @@ function initEvents() {
         if (titleEl) {
           titleEl.value = eventData.titleOverride;
           localStorage.setItem('dock_lessonTitle', eventData.titleOverride);
+          updateTitleCounter();
         }
       }
       if (!state.isStreaming && !state.isPreparing) {
@@ -2628,14 +4543,27 @@ function initEvents() {
     const input = document.getElementById(id);
     if (!input) return;
     const saved = localStorage.getItem('dock_' + id);
-    if (saved) input.value = saved;
+    if (saved && !saved.includes('[object')) input.value = saved;
+    if (id === 'lessonTitle') updateTitleCounter();
     input.addEventListener('input', () => {
-      localStorage.setItem('dock_' + id, input.value.trim());
+      const val = input.value.trim();
+      if (!val.includes('[object')) {
+        localStorage.setItem('dock_' + id, val);
+      }
       clearTimeout(syncDebounceTimer);
-      syncDebounceTimer = setTimeout(syncMetadataToBridgeAndRemote, 200);
+      syncDebounceTimer = setTimeout(() => syncMetadataToBridgeAndRemote(), 200);
+      if (id === 'lessonTitle') updateTitleCounter();
+      if (activePresetId) renderTemplateOptions();
+      checkLiveMetadataDirty();
     });
-    input.addEventListener('change', syncMetadataToBridgeAndRemote);
-    input.addEventListener('blur', syncMetadataToBridgeAndRemote);
+    input.addEventListener('change', () => {
+      syncMetadataToBridgeAndRemote();
+      checkLiveMetadataDirty();
+    });
+    input.addEventListener('blur', () => {
+      syncMetadataToBridgeAndRemote();
+      checkLiveMetadataDirty();
+    });
   });
 
   // Pull initial title from bridge if local is empty
@@ -2643,13 +4571,18 @@ function initEvents() {
     .then((r) => r.json())
     .then((cfg) => {
       if (!cfg) return;
+      if (cfg.authToken && cfg.authToken.trim() && cfg.authToken.trim() !== getAuthToken()) {
+        localStorage.setItem('simple_streamer_auth_token', cfg.authToken.trim());
+        verifyAccountSession();
+      }
       const titleEl = document.getElementById('lessonTitle');
       const descEl = document.getElementById('lessonDescription');
-      if (titleEl && !titleEl.value && cfg.title) {
+      if (titleEl && (!titleEl.value || titleEl.value.includes('[object')) && cfg.title && !cfg.title.includes('[object')) {
         titleEl.value = cfg.title;
         localStorage.setItem('dock_lessonTitle', cfg.title);
+        updateTitleCounter();
       }
-      if (descEl && !descEl.value && cfg.description !== undefined) {
+      if (descEl && (!descEl.value || descEl.value.includes('[object')) && cfg.description !== undefined && !cfg.description.includes('[object')) {
         descEl.value = cfg.description;
         localStorage.setItem('dock_lessonDescription', cfg.description);
       }
@@ -2667,11 +4600,17 @@ function initEvents() {
       .then((r) => r.json())
       .then((cfg) => {
         if (!cfg || !cfg.ok) return;
-        if (!isTypingTitle && titleEl && cfg.title !== undefined && cfg.title !== titleEl.value) {
+        if (cfg.authToken && cfg.authToken.trim() && cfg.authToken.trim() !== getAuthToken()) {
+          logDiag('Auto-applying bridge license token...');
+          localStorage.setItem('simple_streamer_auth_token', cfg.authToken.trim());
+          verifyAccountSession();
+        }
+        if (!isTypingTitle && titleEl && cfg.title !== undefined && !cfg.title.includes('[object') && cfg.title !== titleEl.value) {
           titleEl.value = cfg.title;
           localStorage.setItem('dock_lessonTitle', cfg.title);
+          updateTitleCounter();
         }
-        if (!isTypingDesc && descEl && cfg.description !== undefined && cfg.description !== descEl.value) {
+        if (!isTypingDesc && descEl && cfg.description !== undefined && !cfg.description.includes('[object') && cfg.description !== descEl.value) {
           descEl.value = cfg.description;
           localStorage.setItem('dock_lessonDescription', cfg.description);
         }
@@ -2707,6 +4646,8 @@ function initEvents() {
 }
 
 // Initial Boot Sequence
+loadCachedAccountSession();
+syncDeviceHwidFromBridge().catch(() => {});
 updateActionBtnState();
 initEvents();
 prepareAuthSessions();

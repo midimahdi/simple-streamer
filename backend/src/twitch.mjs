@@ -14,9 +14,29 @@ const TWITCH_API_BASE = 'https://api.twitch.tv/helix';
  * @param {string} [params.clientId] Twitch Client ID
  * @returns {Promise<{ valid: boolean, streamKey?: string, broadcasterName?: string, error?: string }>}
  */
-export async function validateTwitchChannel({ broadcasterId, broadcasterName, streamKey, userToken, clientId = process.env.TWITCH_CLIENT_ID }) {
-  // If streamer entered permanent stream key directly
-  if (streamKey && !userToken) {
+export async function validateTwitchChannel({
+  broadcasterId,
+  broadcasterName,
+  streamKey,
+  userToken,
+  refreshToken,
+  clientId = process.env.TWITCH_CLIENT_ID,
+  clientSecret = process.env.TWITCH_CLIENT_SECRET,
+}) {
+  let activeToken = userToken;
+  let activeRefreshToken = refreshToken;
+
+  // If token is missing but refresh token exists, refresh first
+  if (!activeToken && activeRefreshToken) {
+    const refreshed = await refreshTwitchToken({ refreshToken: activeRefreshToken, clientId, clientSecret });
+    if (refreshed) {
+      activeToken = refreshed.userToken;
+      activeRefreshToken = refreshed.refreshToken;
+    }
+  }
+
+  // If streamer entered permanent stream key directly and has no tokens
+  if (streamKey && !activeToken && !activeRefreshToken) {
     if (!streamKey.startsWith('live_') && streamKey.length < 10) {
       return { valid: false, error: 'Twitch stream key appears malformed. Find it in Twitch Creator Dashboard -> Settings -> Stream.' };
     }
@@ -28,51 +48,95 @@ export async function validateTwitchChannel({ broadcasterId, broadcasterName, st
     };
   }
 
-  if (!userToken) {
+  if (!activeToken && !activeRefreshToken) {
     return { valid: false, error: 'Missing Twitch stream key or user token.' };
   }
 
   const id = clientId || process.env.TWITCH_CLIENT_ID;
   if (!id) {
+    if (streamKey) {
+      return {
+        valid: true,
+        broadcasterName: broadcasterName || 'Twitch Stream',
+        serverUrl: 'rtmp://live.twitch.tv/app/',
+        streamKey,
+      };
+    }
     return { valid: false, error: 'Missing TWITCH_CLIENT_ID in server configuration.' };
   }
 
   try {
     // 1. Validate token & get user info
-    const userRes = await fetch('https://id.twitch.tv/oauth2/validate', {
-      headers: { Authorization: `OAuth ${userToken}` },
+    let userRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `OAuth ${activeToken}` },
     });
 
+    // Auto-refresh token if 401/expired and refreshToken is present
+    if (!userRes.ok && activeRefreshToken) {
+      const refreshed = await refreshTwitchToken({ refreshToken: activeRefreshToken, clientId: id, clientSecret });
+      if (refreshed) {
+        activeToken = refreshed.userToken;
+        activeRefreshToken = refreshed.refreshToken;
+        userRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+          headers: { Authorization: `OAuth ${activeToken}` },
+        });
+      }
+    }
+
     if (!userRes.ok) {
+      // If validation fails but permanent streamKey is present, stream is still 100% functional
+      if (streamKey) {
+        return {
+          valid: true,
+          broadcasterId,
+          broadcasterName: broadcasterName || 'Twitch Stream',
+          streamKey,
+          serverUrl: 'rtmp://live.twitch.tv/app/',
+          userToken: activeToken,
+          refreshToken: activeRefreshToken,
+        };
+      }
       return { valid: false, error: 'Twitch token is invalid or expired. Reconnection required.' };
     }
 
     const userData = await userRes.json();
     const effectiveBroadcasterId = broadcasterId || userData.user_id;
-    const broadcasterName = userData.login || 'Twitch Channel';
+    const name = userData.login || broadcasterName || 'Twitch Channel';
 
-    // 2. Fetch stream key if broadcasterId matches
-    let streamKey = null;
-    const keyRes = await fetch(`${TWITCH_API_BASE}/streams/key?broadcaster_id=${encodeURIComponent(effectiveBroadcasterId)}`, {
-      headers: {
-        'Client-ID': id,
-        Authorization: `Bearer ${userToken}`,
-      },
-    });
+    // 2. Fetch stream key if missing
+    let resolvedKey = streamKey;
+    if (!resolvedKey) {
+      const keyRes = await fetch(`${TWITCH_API_BASE}/streams/key?broadcaster_id=${encodeURIComponent(effectiveBroadcasterId)}`, {
+        headers: {
+          'Client-ID': id,
+          Authorization: `Bearer ${activeToken}`,
+        },
+      });
 
-    if (keyRes.ok) {
-      const keyData = await keyRes.json();
-      streamKey = keyData.data?.[0]?.stream_key || null;
+      if (keyRes.ok) {
+        const keyData = await keyRes.json();
+        resolvedKey = keyData.data?.[0]?.stream_key || null;
+      }
     }
 
     return {
       valid: true,
       broadcasterId: effectiveBroadcasterId,
-      broadcasterName,
-      streamKey,
+      broadcasterName: name,
+      streamKey: resolvedKey || streamKey,
       serverUrl: 'rtmp://live.twitch.tv/app/',
+      userToken: activeToken,
+      refreshToken: activeRefreshToken,
     };
   } catch (err) {
+    if (streamKey) {
+      return {
+        valid: true,
+        broadcasterName: broadcasterName || 'Twitch Stream',
+        serverUrl: 'rtmp://live.twitch.tv/app/',
+        streamKey,
+      };
+    }
     return { valid: false, error: err.message };
   }
 }

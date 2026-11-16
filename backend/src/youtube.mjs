@@ -371,7 +371,16 @@ export async function reconcileYouTubeMetadata({ broadcastId, title, description
  * @param {string} [params.streamId]
  * @returns {Promise<{ valid: boolean, channelName?: string, streamId?: string, streamName?: string, ingestionAddress?: string, streams?: Array, error?: string }>}
  */
-export async function validateYouTubeChannel({ refreshToken, streamId }) {
+export async function validateYouTubeChannel({ refreshToken, streamId, streamKey, channelName }) {
+  if (streamKey && !refreshToken) {
+    return {
+      valid: true,
+      channelName: channelName || 'YouTube Live',
+      serverUrl: 'rtmp://a.rtmp.youtube.com/live2',
+      streamKey,
+    };
+  }
+
   if (!refreshToken) {
     return { valid: false, error: 'Missing YouTube refresh token.' };
   }
@@ -407,4 +416,66 @@ export async function validateYouTubeChannel({ refreshToken, streamId }) {
     return { valid: false, error: err.message };
   }
 }
+
+/**
+ * Uploads a custom thumbnail to an active YouTube broadcast video.
+ * Handles intermediate features phone verification failures non-fatally.
+ *
+ * @param {Object} params
+ * @param {string} [params.refreshToken]
+ * @param {string} [params.accessToken]
+ * @param {string} params.videoId
+ * @param {Buffer} params.imageBuffer
+ * @param {string} [params.mimeType='image/jpeg']
+ * @returns {Promise<{ ok: boolean, data?: object, skipped?: boolean, reason?: string, error?: string }>}
+ */
+export async function setYouTubeThumbnail({
+  refreshToken = null,
+  accessToken = null,
+  videoId,
+  imageBuffer,
+  mimeType = 'image/jpeg',
+}) {
+  if (!videoId) {
+    return { ok: false, error: 'Missing videoId for YouTube thumbnail.' };
+  }
+  if (!imageBuffer) {
+    return { ok: false, error: 'Missing imageBuffer for YouTube thumbnail.' };
+  }
+
+  try {
+    const token = accessToken || (await getAccessToken(refreshToken));
+    const uploadUrl = `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`;
+
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': mimeType,
+        'Content-Length': String(imageBuffer.length),
+      },
+      body: imageBuffer,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      // Detect unverified phone requirement (intermediate features)
+      if (res.status === 403 && (errText.includes('thumbnailNotPermitted') || errText.includes('intermediateFeatures'))) {
+        return {
+          ok: false,
+          skipped: true,
+          reason: 'unverified_channel',
+          error: 'YouTube channel requires phone verification in YouTube Studio settings to upload custom thumbnails.',
+        };
+      }
+      return { ok: false, error: `YouTube thumbnail upload failed (${res.status}): ${errText}` };
+    }
+
+    const data = await res.json();
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 
