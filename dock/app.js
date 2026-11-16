@@ -691,6 +691,10 @@ async function verifyAccountSession() {
 
   try {
     const hwid = await syncDeviceHwidFromBridge();
+    if (!hwid) {
+      logDiag('Waiting for native bridge to provide authentic hardware identifier before device check...');
+      return;
+    }
 
     const res = await fetch(`${state.config.backendUrl}/auth/device-check`, {
       method: 'POST',
@@ -860,35 +864,40 @@ async function syncDeviceHwidFromBridge() {
   if (cachedBridgeHwid && cachedBridgeHwid.length >= 8 && !cachedBridgeHwid.startsWith('obs_dock_')) {
     return cachedBridgeHwid;
   }
-  try {
-    const res = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors' });
-    if (res.ok) {
-      const data = await res.json();
-      const bridgeHwid = data.hwid || data.machineId;
-      if (bridgeHwid && bridgeHwid.length >= 8 && !bridgeHwid.startsWith('obs_dock_')) {
-        cachedBridgeHwid = bridgeHwid.trim();
-        localStorage.setItem('simple_streamer_hwid', cachedBridgeHwid);
-        return cachedBridgeHwid;
-      }
-    }
-  } catch (_) {}
-  return getDeviceHwid();
-}
 
-function getDeviceHwid() {
+  // Purge any legacy synthetic dummy IDs from storage
+  const stored = localStorage.getItem('simple_streamer_hwid');
+  if (stored && (stored.startsWith('obs_dock_') || stored === 'default-hwid' || stored.length < 8)) {
+    localStorage.removeItem('simple_streamer_hwid');
+  } else if (stored && stored.length >= 8) {
+    cachedBridgeHwid = stored.trim();
+  }
+
+  // Query native bridge (retry up to 3 times with backoff if bridge is starting up)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors' });
+      if (res.ok) {
+        const data = await res.json();
+        const bridgeHwid = data.hwid || data.machineId;
+        if (bridgeHwid && bridgeHwid.length >= 8 && !bridgeHwid.startsWith('obs_dock_')) {
+          cachedBridgeHwid = bridgeHwid.trim();
+          localStorage.setItem('simple_streamer_hwid', cachedBridgeHwid);
+          return cachedBridgeHwid;
+        }
+      }
+    } catch (_) {}
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+    }
+  }
+
+  // Return verified bridge HWID if available, never generate synthetic obs_dock_ IDs
   if (cachedBridgeHwid && cachedBridgeHwid.length >= 8 && !cachedBridgeHwid.startsWith('obs_dock_')) {
     return cachedBridgeHwid;
   }
-  let hwid = localStorage.getItem('simple_streamer_hwid');
-  if (hwid && !hwid.startsWith('obs_dock_') && hwid.length >= 8 && hwid !== 'default-hwid') {
-    cachedBridgeHwid = hwid.trim();
-    return cachedBridgeHwid;
-  }
-  if (!hwid || hwid.length < 8 || hwid === 'default-hwid') {
-    hwid = 'obs_dock_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 6);
-    localStorage.setItem('simple_streamer_hwid', hwid);
-  }
-  return hwid;
+
+  return null;
 }
 
 function applyTemplateVariables(str) {

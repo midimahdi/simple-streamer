@@ -1240,7 +1240,7 @@
     <div class="modal-card">
       <div id="muteModalTitle" class="modal-heading" data-i18n="muteModalTitle">Mute Microphone?</div>
       <div id="muteModalDesc" class="modal-desc" data-i18n="muteModalDesc">
-        This will immediately silence the mosque microphone output in OBS Studio.
+        This will immediately silence the master microphone output in OBS Studio.
       </div>
       <div class="modal-btn-row">
         <button id="btnCancelMuteModal" class="btn-modal btn-modal-cancel" data-i18n="btnCancel">Cancel</button>
@@ -2504,8 +2504,13 @@
     }
 
     // Stream Telemetry Polling
+    let streamStatsTimer = null;
     async function pollStreamStats() {
-      if (!state.isIdentified) return;
+      if (streamStatsTimer) {
+        clearTimeout(streamStatsTimer);
+        streamStatsTimer = null;
+      }
+      if (!state.isIdentified || document.hidden) return;
       try {
         const status = await callWs('GetStreamStatus');
         if (status) {
@@ -2535,7 +2540,9 @@
           }
         }
       } catch (_) {}
-      setTimeout(pollStreamStats, 2000);
+      if (!document.hidden) {
+        streamStatsTimer = setTimeout(pollStreamStats, 2000);
+      }
     }
 
     function formatDuration(sec) {

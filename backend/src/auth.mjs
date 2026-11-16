@@ -176,7 +176,7 @@ export async function checkDeviceAndEntitlement(userId, hwid, deviceName = 'Simp
   }
 
   const cleanHwid = typeof hwid === 'string' ? hwid.trim() : '';
-  if (!cleanHwid || cleanHwid.length < 8 || cleanHwid === 'default-hwid') {
+  if (!cleanHwid || cleanHwid.length < 8 || cleanHwid === 'default-hwid' || cleanHwid.startsWith('obs_dock_')) {
     return {
       allowed: false,
       error: 'invalid_hwid',
@@ -185,6 +185,17 @@ export async function checkDeviceAndEntitlement(userId, hwid, deviceName = 'Simp
   }
 
   try {
+    // Proactively purge any legacy synthetic obs_dock_ records for this user
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/user_devices?user_id=eq.${encodeURIComponent(userId)}&hwid=like.obs_dock_*`, {
+        method: 'DELETE',
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      });
+    } catch (_) {}
+
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/validate_and_register_device`, {
       method: 'POST',
       headers: {

@@ -1,10 +1,12 @@
 {
-  "name": "mosque-stream-orchestrator-backend",
+  "name": "simple-streamer-backend",
   "version": "1.0.0",
-  "description": "Zero-friction dual-stream orchestrator middleware for YouTube and Facebook Live",
+  "description": "Zero-friction multi-stream orchestrator middleware for Simple Streamer",
   "type": "module",
   "main": "src/index.mjs",
   "scripts": {
+    "sync:dock": "cp -r ../dock/* ./dock/ 2>/dev/null || true",
+    "pretest": "npm run sync:dock",
     "start": "node src/index.mjs",
     "dev": "node --watch src/index.mjs",
     "test": "node ../scripts/test-orchestrator.mjs"

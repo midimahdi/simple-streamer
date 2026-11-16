@@ -20,11 +20,16 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 "$PROJECT_DIR/plugin/build-mac.sh"
 cp -R "$PROJECT_DIR/plugin/build/simple-streamer.plugin" "$BUILD_DIR/scripts/simple-streamer.plugin"
 
+# 1b. Bundle Dock & Mobile Remote Web UI assets
+echo "  Bundling Dock and Remote UI assets..."
+cp -R "$PROJECT_DIR/dock" "$BUILD_DIR/scripts/dock"
+
 # 2. Ensure Universal bridge binary exists
 echo "  Compiling Universal bridge binary..."
 mkdir -p "$SCRIPT_DIR/bin"
 /usr/bin/clang -O3 -fobjc-arc -arch arm64 -arch x86_64 -framework Foundation "$SCRIPT_DIR/simple-streamer-bridge.m" -o "$BIN_SOURCE"
 chmod +x "$BIN_SOURCE"
+codesign --force --deep -s - -i com.bdjlmn.simple-streamer "$BIN_SOURCE" 2>/dev/null || true
 cp "$BIN_SOURCE" "$BUILD_DIR/scripts/simple-streamer-bridge"
 
 # 3. Create postinstall script
@@ -39,15 +44,23 @@ BIN_DIR="${USER_HOME}/.simple-streamer/bin"
 PLIST_PATH="${USER_HOME}/Library/LaunchAgents/com.bdjlmn.simple-streamer.plist"
 OBS_DIR="${USER_HOME}/Library/Application Support/obs-studio"
 PLUGINS_DIR="${OBS_DIR}/plugins"
+CONFIG_DIR="${OBS_DIR}/plugin_config/simple-streamer"
 USER_INI="${OBS_DIR}/user.ini"
+DOCK_URL="http://127.0.0.1:45455/dock"
 
-mkdir -p "${BIN_DIR}" "${USER_HOME}/Library/LaunchAgents" "${PLUGINS_DIR}"
+mkdir -p "${BIN_DIR}" "${USER_HOME}/Library/LaunchAgents" "${PLUGINS_DIR}" "${CONFIG_DIR}"
 
 # Install native secondary stream plugin
 if [ -d "$SCRIPT_DIR/simple-streamer.plugin" ]; then
     rm -rf "${PLUGINS_DIR}/simple-streamer.plugin"
     cp -R "$SCRIPT_DIR/simple-streamer.plugin" "${PLUGINS_DIR}/"
     chown -R "${CONSOLE_USER}" "${PLUGINS_DIR}/simple-streamer.plugin"
+fi
+
+# Install Dock and Remote UI assets
+if [ -d "$SCRIPT_DIR/dock" ]; then
+    cp -R "$SCRIPT_DIR/dock/"* "${CONFIG_DIR}/"
+    chown -R "${CONSOLE_USER}" "${CONFIG_DIR}"
 fi
 
 # Pre-seed and guarantee OBS WebSocket server is enabled
@@ -120,8 +133,18 @@ try:
     if match:
         try: docks = json.loads(match.group(1).strip())
         except: docks = []
+    
+    updated = False
+    for d in docks:
+        if d.get('title') == 'Simple Streamer':
+            if d.get('url') != '${DOCK_URL}':
+                d['url'] = '${DOCK_URL}'
+                updated = True
     if not any(d.get('title') == 'Simple Streamer' for d in docks):
-        docks.append({'title': 'Simple Streamer', 'url': 'https://simple-streamer.bdjlmn.com'})
+        docks.append({'title': 'Simple Streamer', 'url': '${DOCK_URL}'})
+        updated = True
+
+    if updated:
         new_line = 'ExtraBrowserDocks=' + json.dumps(docks)
         if match: content = re.sub(pattern, new_line, content)
         else: content += '\n[BasicWindow]\n' + new_line + '\n'

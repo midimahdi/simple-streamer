@@ -1320,7 +1320,14 @@ function accountHtml(): string {
               return;
             }
 
-            var devices = res.data || [];
+            var devices = (res.data || []).filter(function(d) {
+              if (d && d.hwid && d.hwid.indexOf('obs_dock_') === 0) {
+                // Auto-purge legacy synthetic dock entry
+                supabase.from('user_devices').delete().eq('id', d.id).then(function() {});
+                return false;
+              }
+              return true;
+            });
             var countEl = document.getElementById('deviceSlotCount');
             if (countEl) {
               countEl.innerText = devices.length + ' of 2 Devices Active';

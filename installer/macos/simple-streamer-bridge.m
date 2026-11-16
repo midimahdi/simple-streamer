@@ -192,7 +192,7 @@ static void close_auth_tabs() {
                        @"tell application bName\n"
                        @"repeat with w in windows\n"
                        @"repeat with t in tabs of w\n"
-                       @"if URL of t contains \"simple-streamer\" or URL of t contains \"auth/callback\" then\n"
+                       @"if URL of t contains \"auth/callback\" then\n"
                        @"close t\n"
                        @"end if\n"
                        @"end repeat\n"
@@ -223,6 +223,51 @@ static NSData* get_obs_config() {
         if (data) return data;
     }
     return [@"{\"auth_required\":false}" dataUsingEncoding:NSUTF8StringEncoding];
+}
+
+static NSString* get_or_create_machine_guid() {
+    NSString *home = NSHomeDirectory();
+    NSString *dir = [home stringByAppendingPathComponent:@"Library/Application Support/obs-studio/plugin_config/simple-streamer"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *path = [dir stringByAppendingPathComponent:@"machine_id.txt"];
+
+    if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        NSString *cached = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+        if (cached) {
+            cached = [cached stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (cached.length >= 8) return cached;
+        }
+    }
+
+    NSString *guid = nil;
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = @"/usr/sbin/ioreg";
+    task.arguments = @[@"-d2", @"-c", @"IOPlatformExpertDevice"];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    @try {
+        [task launch];
+        [task waitUntilExit];
+        NSData *outData = [[pipe fileHandleForReading] readDataToEndOfFile];
+        NSString *outStr = [[NSString alloc] initWithData:outData encoding:NSUTF8StringEncoding];
+        if (outStr) {
+            NSRange r = [outStr rangeOfString:@"\"IOPlatformUUID\" = \""];
+            if (r.location != NSNotFound) {
+                NSUInteger start = r.location + r.length;
+                NSUInteger end = [outStr rangeOfString:@"\"" options:0 range:NSMakeRange(start, outStr.length - start)].location;
+                if (end != NSNotFound) {
+                    guid = [outStr substringWithRange:NSMakeRange(start, end - start)];
+                }
+            }
+        }
+    } @catch (NSException *e) {}
+
+    if (!guid || guid.length < 8) {
+        guid = [[NSUUID UUID] UUIDString];
+    }
+
+    [guid writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    return guid;
 }
 
 static void save_secondary_config(BOOL enabled, NSString *server, NSString *key) {
@@ -316,6 +361,7 @@ static BOOL try_serve_static_file(int client_fd, NSString *reqPath, BOOL isHead)
         sub = [sub substringToIndex:[sub rangeOfString:@"?"].location];
     }
     while ([sub hasPrefix:@"/"]) sub = [sub substringFromIndex:1];
+    if ([sub hasPrefix:@"dock/"]) sub = [sub substringFromIndex:5];
     if (sub.length == 0 || [sub isEqualToString:@"dock"]) {
         sub = @"index.html";
     } else if ([sub isEqualToString:@"remote"]) {
@@ -523,6 +569,60 @@ static void handle_client(int client_fd, struct sockaddr_in client_addr) {
                                        "Content-Length: 15\r\n\r\n"
                                        "{\"status\":\"ok\"}";
                     write_all(client_fd, resp, strlen(resp));
+                } else if ([request containsString:@"/save-auth"]) {
+                    NSString *token = @"";
+                    NSRange lineEnd = [request rangeOfString:@"\r\n"];
+                    if (lineEnd.location != NSNotFound) {
+                        NSString *reqLine = [request substringToIndex:lineEnd.location];
+                        NSArray *parts = [reqLine componentsSeparatedByString:@" "];
+                        if (parts.count >= 2) {
+                            NSURLComponents *comp = [NSURLComponents componentsWithString:parts[1]];
+                            for (NSURLQueryItem *item in comp.queryItems) {
+                                if ([item.name isEqualToString:@"token"]) {
+                                    token = item.value ?: @"";
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (token.length == 0) {
+                        NSRange bodySep = [request rangeOfString:@"\r\n\r\n"];
+                        if (bodySep.location != NSNotFound) {
+                            NSString *bodyStr = [request substringFromIndex:bodySep.location + 4];
+                            NSData *bData = [bodyStr dataUsingEncoding:NSUTF8StringEncoding];
+                            if (bData) {
+                                NSDictionary *bJson = [NSJSONSerialization JSONObjectWithData:bData options:0 error:nil];
+                                if (bJson && bJson[@"token"]) token = bJson[@"token"];
+                            }
+                        }
+                    }
+                    if (token.length > 0) {
+                        NSString *appSupport = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+                        NSString *cfgDir = [appSupport stringByAppendingPathComponent:@"obs-studio/plugin_config/simple-streamer"];
+                        [[NSFileManager defaultManager] createDirectoryAtPath:cfgDir withIntermediateDirectories:YES attributes:nil error:nil];
+                        NSString *tokenFile = [cfgDir stringByAppendingPathComponent:@"auth_token.txt"];
+                        [token writeToFile:tokenFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                    }
+                    const char *resp = "HTTP/1.1 200 OK\r\n"
+                                       "Access-Control-Allow-Origin: *\r\n"
+                                       "Access-Control-Allow-Private-Network: true\r\n"
+                                       "Content-Type: application/json\r\n"
+                                       "Content-Length: 11\r\n\r\n"
+                                       "{\"ok\":true}";
+                    write_all(client_fd, resp, strlen(resp));
+                } else if ([request containsString:@"/machine-id"]) {
+                    NSString *mGuid = get_or_create_machine_guid();
+                    NSString *json = [NSString stringWithFormat:@"{\"ok\":true,\"machineId\":\"%@\",\"hwid\":\"%@\"}", mGuid, mGuid];
+                    NSData *bodyData = [json dataUsingEncoding:NSUTF8StringEncoding];
+                    NSString *header = [NSString stringWithFormat:
+                                       @"HTTP/1.1 200 OK\r\n"
+                                       "Access-Control-Allow-Origin: *\r\n"
+                                       "Access-Control-Allow-Private-Network: true\r\n"
+                                       "Cache-Control: no-cache\r\n"
+                                       "Content-Type: application/json\r\n"
+                                       "Content-Length: %lu\r\n\r\n", (unsigned long)bodyData.length];
+                    write_all(client_fd, [header UTF8String], strlen([header UTF8String]));
+                    write_all(client_fd, [bodyData bytes], bodyData.length);
                 } else if ([request containsString:@"/remote-config"]) {
                     NSString *lanIp = get_local_lan_ip();
                     NSData *cfgData = get_obs_config();
@@ -540,15 +640,26 @@ static void handle_client(int client_fd, struct sockaddr_in client_addr) {
                     NSDictionary *bState = get_broadcast_state();
                     BOOL obsOnline = is_obs_online(obsPort);
                     NSString *mName = [[NSHost currentHost] localizedName] ?: @"MacBook";
+                    NSString *mGuid = get_or_create_machine_guid();
+                    NSString *appSupport = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+                    NSString *authFile = [appSupport stringByAppendingPathComponent:@"obs-studio/plugin_config/simple-streamer/auth_token.txt"];
+                    NSString *authToken = @"";
+                    if ([[NSFileManager defaultManager] fileExistsAtPath:authFile]) {
+                        authToken = [NSString stringWithContentsOfFile:authFile encoding:NSUTF8StringEncoding error:nil] ?: @"";
+                        authToken = [authToken stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    }
                     NSMutableDictionary *respDict = [NSMutableDictionary dictionaryWithDictionary:@{
                         @"ok": @YES,
                         @"obsOnline": @(obsOnline),
                         @"machineName": mName,
+                        @"machineId": mGuid,
+                        @"hwid": mGuid,
+                        @"authToken": authToken ?: @"",
                         @"bridgePort": @(BRIDGE_PORT),
                         @"obsPort": @(obsPort),
                         @"hostIp": lanIp ?: @"127.0.0.1",
                         @"obsPass": obsPass ?: @"",
-                        @"title": bState[@"title"] ?: @"Mosque Live Broadcast",
+                        @"title": bState[@"title"] ?: @"Live Broadcast",
                         @"description": bState[@"description"] ?: @"",
                         @"destinations": bState[@"destinations"] ?: @[]
                     }];

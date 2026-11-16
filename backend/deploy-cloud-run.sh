@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # Deploy Mosque Stream Orchestrator to Google Cloud Run (Free Tier Eligible)
 # Usage: ./deploy-cloud-run.sh [GCP_PROJECT_ID] [REGION]
 
@@ -20,6 +23,32 @@ echo "Deploying to Cloud Run: $SERVICE_NAME"
 echo "Project: $PROJECT_ID | Region: $REGION"
 echo "=================================================="
 
+ENV_ARG="--update-env-vars=NODE_ENV=production"
+if [ -f ".env" ]; then
+  ENV_YAML="$(mktemp /tmp/cloudrun-env-XXXXXX.yaml)"
+  trap 'rm -f "$ENV_YAML"' EXIT
+  node -e '
+    const fs = require("fs");
+    const lines = fs.readFileSync(".env", "utf8").split("\n");
+    const yaml = ["NODE_ENV: \"production\""];
+    for (const line of lines) {
+      const t = line.trim();
+      if (t && !t.startsWith("#") && t.includes("=")) {
+        const idx = t.indexOf("=");
+        const k = t.slice(0, idx).trim();
+        let v = t.slice(idx + 1).trim();
+        if ((v.startsWith("\"") && v.endsWith("\"")) || (v.startsWith("\x27") && v.endsWith("\x27"))) {
+          v = v.slice(1, -1);
+        }
+        yaml.push(`${k}: "${v.replace(/"/g, "\\\"")}"`);
+      }
+    }
+    fs.writeFileSync(process.argv[1], yaml.join("\n"));
+  ' "$ENV_YAML"
+  ENV_ARG="--env-vars-file=$ENV_YAML"
+  echo "Loaded environment variables from local .env"
+fi
+
 gcloud run deploy "$SERVICE_NAME" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
@@ -32,7 +61,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --memory=256Mi \
   --cpu=1 \
   --timeout=30s \
-  --update-env-vars="NODE_ENV=production"
+  $ENV_ARG
 
 echo ""
 echo "Deployment Complete! Service URL:"

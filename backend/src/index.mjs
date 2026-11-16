@@ -280,7 +280,7 @@ export async function handleRequest(req, res) {
   if (req.method === 'GET' && pathname === '/health') {
     return sendJson(res, 200, {
       status: 'OK',
-      service: 'mosque-stream-orchestrator',
+      service: 'simple-streamer',
       timestamp: new Date().toISOString(),
       configured: {
         youtube: Boolean(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_REFRESH_TOKEN && process.env.YOUTUBE_STREAM_ID),
@@ -1006,11 +1006,11 @@ function renderAuthErrorHtml(title, message) {
       });
     }
 
-    if (!hwid || hwid.length < 8 || hwid === 'default-hwid') {
+    if (!hwid || hwid.length < 8 || hwid === 'default-hwid' || hwid.startsWith('obs_dock_')) {
       return sendJson(res, 400, {
         ok: false,
         error: 'DEVICE_IDENTIFIER_REQUIRED',
-        message: 'Valid hardware identifier (min 8 chars) is required for machine linking.',
+        message: 'Valid hardware identifier from native bridge (min 8 chars) is required for machine linking.',
       });
     }
 

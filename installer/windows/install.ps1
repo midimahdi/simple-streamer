@@ -32,42 +32,55 @@ $DockUrl = "http://127.0.0.1:45455/dock"
 function Set-ObsDockConfig($file) {
     if (-not (Test-Path $file)) { return }
     $content = Get-Content $file -Raw -Encoding utf8
-    if ($content -notmatch '\[ExtraBrowserDocks\]') {
-        $content += "`r`n[ExtraBrowserDocks]`r`n"
-    }
-    # Migrate legacy remote URLs to fast, reliable local bridge endpoint
+
+    # 1. Migrate legacy remote URLs
     if ($content -match 'https://simple-streamer\.bdjlmn\.com/dock') {
         $content = $content -replace 'https://simple-streamer\.bdjlmn\.com/dock', $DockUrl
-        [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
     }
-    if ($content -notmatch 'Simple Streamer') {
-            $lines = $content -split "`r?`n"
-            $newLines = @()
-            $inSection = $false
-            $added = $false
-            foreach ($line in $lines) {
-                $newLines += $line
-                if ($line -match '^\[ExtraBrowserDocks\]') {
-                    $inSection = $true
-                    continue
-                }
-                if ($inSection -and ($line -match '^\[.*\]' -or [string]::IsNullOrWhiteSpace($line)) -and (-not $added)) {
-                    $newLines = $newLines[0..($newLines.Count - 2)]
-                    $newLines += "titles=`"$DockName`""
-                    $newLines += "urls=`"$DockUrl`""
-                    $newLines += $line
-                    $added = $true
-                    $inSection = $false
-                }
+
+    # 2. Configure Modern OBS 28-31+ format (JSON string under [BasicWindow])
+    $dockEntry = @{
+        title = $DockName
+        url   = $DockUrl
+    }
+
+    if ($content -match '(?m)^ExtraBrowserDocks=(.*)$') {
+        $rawJson = $matches[1].Trim()
+        $docks = @()
+        try {
+            $parsed = $rawJson | ConvertFrom-Json
+            if ($parsed -is [System.Collections.IEnumerable] -and $parsed -isnot [string]) {
+                $docks = @($parsed)
+            } elseif ($parsed) {
+                $docks = @($parsed)
             }
-            if (-not $added) {
-                $newLines += "titles=`"$DockName`""
-                $newLines += "urls=`"$DockUrl`""
+        } catch {
+            $docks = @()
+        }
+
+        $found = $false
+        foreach ($d in $docks) {
+            if ($d.title -eq $DockName) {
+                $d.url = $DockUrl
+                $found = $true
             }
-            $content = $newLines -join "`r`n"
-            [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
+        }
+        if (-not $found) {
+            $docks += $dockEntry
+        }
+
+        $newJson = $docks | ConvertTo-Json -Compress
+        $content = [System.Text.RegularExpressions.Regex]::Replace($content, '(?m)^ExtraBrowserDocks=.*$', "ExtraBrowserDocks=$newJson")
+    } else {
+        $newEntry = "ExtraBrowserDocks=[{`"title`":`"$DockName`",`"url`":`"$DockUrl`"}]"
+        if ($content -match '(?m)^\[BasicWindow\]') {
+            $content = [System.Text.RegularExpressions.Regex]::Replace($content, '(?m)^\[BasicWindow\]', "[BasicWindow]`r`n$newEntry")
+        } else {
+            $content += "`r`n[BasicWindow]`r`n$newEntry`r`n"
         }
     }
+
+    [System.IO.File]::WriteAllText($file, $content, [System.Text.Encoding]::UTF8)
 }
 
 Set-ObsDockConfig "$ObsDir\global.ini"
@@ -169,7 +182,7 @@ if (Test-Path $DockDir) {
 } else {
     Write-Host "    [!] Local dock bundle not found. Downloading assets from GitHub..." -ForegroundColor Cyan
     $files = @(
-        "app.js", "index.html", "style.css", "obs-client.js",
+        "app.js", "locales.js", "index.html", "style.css", "obs-client.js",
         "remote.html", "manifest.json", "sw.js", "icon.svg",
         "icon-192.png", "icon-512.png", "vendor/qrcode.min.js"
     )
@@ -360,6 +373,29 @@ while ($listener.IsListening) {
             continue
         }
 
+        if ($path -eq "/machine-id") {
+            $midFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\machine_id.txt"
+            $machineGuid = ""
+            if (Test-Path $midFile) {
+                try { $machineGuid = (Get-Content $midFile -Raw).Trim() } catch {}
+            }
+            if (-not $machineGuid -or $machineGuid.Length -lt 8) {
+                try {
+                    $machineGuid = (Get-CimInstance Win32_ComputerSystemProduct -ErrorAction SilentlyContinue).UUID
+                } catch {}
+                if (-not $machineGuid -or $machineGuid.Length -lt 8) {
+                    $machineGuid = [System.Guid]::NewGuid().ToString()
+                }
+                try { [System.IO.File]::WriteAllText($midFile, $machineGuid, [System.Text.Encoding]::UTF8) } catch {}
+            }
+            $mResp = @{ ok = $true; machineId = $machineGuid; hwid = $machineGuid } | ConvertTo-Json
+            $mBuf = [System.Text.Encoding]::UTF8.GetBytes($mResp)
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($mBuf, 0, $mBuf.Length)
+            $res.Close()
+            continue
+        }
+
         if ($path -eq "/remote-config") {
             $localIp = "127.0.0.1"
             try {
@@ -391,10 +427,34 @@ while ($listener.IsListening) {
                 } catch {}
             }
 
+            $midFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\machine_id.txt"
+            $machineGuid = ""
+            if (Test-Path $midFile) {
+                try { $machineGuid = (Get-Content $midFile -Raw).Trim() } catch {}
+            }
+            if (-not $machineGuid -or $machineGuid.Length -lt 8) {
+                try {
+                    $machineGuid = (Get-CimInstance Win32_ComputerSystemProduct -ErrorAction SilentlyContinue).UUID
+                } catch {}
+                if (-not $machineGuid -or $machineGuid.Length -lt 8) {
+                    $machineGuid = [System.Guid]::NewGuid().ToString()
+                }
+                try { [System.IO.File]::WriteAllText($midFile, $machineGuid, [System.Text.Encoding]::UTF8) } catch {}
+            }
+
+            $authToken = ""
+            $authFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\auth_token.txt"
+            if (Test-Path $authFile) {
+                try { $authToken = (Get-Content $authFile -Raw).Trim() } catch {}
+            }
+
             $respObj = @{
                 ok = $true
                 obsOnline = $obsRunning
-                machineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "Mosque PC" }
+                machineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "Broadcasting Workstation" }
+                machineId = $machineGuid
+                hwid = $machineGuid
+                authToken = $authToken
                 bridgePort = 45455
                 obsPort = $port
                 hostIp = $localIp
@@ -446,6 +506,88 @@ while ($listener.IsListening) {
             if ($changed) {
                 Save-BroadcastState $bState
             }
+
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"status\`":\`"ok\`"}")
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/toggle-destination") {
+            $destId = $req.QueryString["id"]
+            $stateStr = $req.QueryString["enabled"]
+
+            $bState = Get-BroadcastState
+            $dests = if ($bState.destinations) { $bState.destinations } else { @() }
+            $changed = $false
+
+            foreach ($d in $dests) {
+                $curId = if ($d -is [PSCustomObject]) { $d.id } else { $d["id"] }
+                $curName = if ($d -is [PSCustomObject]) { $d.name } else { $d["name"] }
+                $curPlatform = if ($d -is [PSCustomObject]) { $d.platform } else { $d["platform"] }
+
+                if ($curId -eq $destId -or $curName -eq $destId -or $curPlatform -eq $destId) {
+                    $curEn = if ($d -is [PSCustomObject]) { [bool]$d.enabled } else { [bool]$d["enabled"] }
+                    $nextEn = if ($null -ne $stateStr) { ($stateStr -eq "1" -or $stateStr -eq "true") } else { -not $curEn }
+                    if ($d -is [PSCustomObject]) {
+                        $d.enabled = $nextEn
+                    } else {
+                        $d["enabled"] = $nextEn
+                    }
+                    $changed = $true
+                }
+            }
+
+            if ($changed) {
+                if ($bState -is [PSCustomObject]) {
+                    $bState.destinations = $dests
+                } else {
+                    $bState["destinations"] = $dests
+                }
+                Save-BroadcastState $bState
+            }
+
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"status\`":\`"ok\`"}")
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/sync-destinations" -and $req.HttpMethod -eq "POST") {
+            try {
+                $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+                $body = $reader.ReadToEnd()
+                $json = $body | ConvertFrom-Json
+                if ($json.destinations) {
+                    $bState = Get-BroadcastState
+                    $curDests = if ($bState.destinations) { $bState.destinations } else { @() }
+                    $changed = $false
+
+                    foreach ($nd in $json.destinations) {
+                        $nid = $nd.id
+                        $nen = [bool]$nd.enabled
+                        if (-not $nid) { continue }
+
+                        foreach ($d in $curDests) {
+                            $curId = if ($d -is [PSCustomObject]) { $d.id } else { $d["id"] }
+                            if ($curId -eq $nid) {
+                                $curEn = if ($d -is [PSCustomObject]) { [bool]$d.enabled } else { [bool]$d["enabled"] }
+                                if ($curEn -ne $nen) {
+                                    if ($d -is [PSCustomObject]) { $d.enabled = $nen } else { $d["enabled"] = $nen }
+                                    $changed = $true
+                                }
+                            }
+                        }
+                    }
+
+                    if ($changed) {
+                        if ($bState -is [PSCustomObject]) { $bState.destinations = $curDests } else { $bState["destinations"] = $curDests }
+                        Save-BroadcastState $bState
+                    }
+                }
+            } catch {}
 
             $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"status\`":\`"ok\`"}")
             $res.ContentType = "application/json"
@@ -531,6 +673,21 @@ while ($listener.IsListening) {
             continue
         }
 
+        if ($path -eq "/dock/locales.js" -or $path -eq "/locales.js") {
+            $locFile = "$BridgeDir\locales.js"
+            if (-not (Test-Path $locFile)) { $locFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\locales.js" }
+            if (Test-Path $locFile) {
+                $bytes = [System.IO.File]::ReadAllBytes($locFile)
+                $res.ContentType = "application/javascript; charset=utf-8"
+                $res.AddHeader("Cache-Control", "no-cache")
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+            continue
+        }
+
         if ($path -eq "/dock/app.js" -or $path -eq "/app.js") {
             $appFile = "$BridgeDir\app.js"
             if (-not (Test-Path $appFile)) { $appFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\app.js" }
@@ -588,6 +745,31 @@ while ($listener.IsListening) {
             $respObj = @{ authResponse = $authBase64 }
             $respJson = $respObj | ConvertTo-Json
             $buf = [System.Text.Encoding]::UTF8.GetBytes($respJson)
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
+        if ($path -eq "/save-auth") {
+            $token = $req.QueryString["token"]
+            if (-not $token -and $req.HttpMethod -eq "POST") {
+                try {
+                    $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+                    $bJson = $reader.ReadToEnd() | ConvertFrom-Json
+                    if ($bJson.token) { $token = $bJson.token }
+                } catch {}
+            }
+            if ($token) {
+                $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
+                if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+                try { [System.IO.File]::WriteAllText("$d\auth_token.txt", $token.Trim(), [System.Text.Encoding]::UTF8) } catch {}
+                try {
+                    $ws = New-Object -ComObject WScript.Shell
+                    $ws.AppActivate("OBS") | Out-Null
+                } catch {}
+            }
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"ok\`":true}")
             $res.ContentType = "application/json"
             $res.OutputStream.Write($buf, 0, $buf.Length)
             $res.Close()

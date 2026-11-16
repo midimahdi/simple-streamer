@@ -35,13 +35,13 @@ export const PRESETS = {
 };
 
 /**
- * Builds standard description template populated with mosque social links and date.
+ * Builds standard description template populated with organization social links and date.
  */
 export function buildDescription({ title, presetId = 'custom', customNotes = '' }) {
-  const mosqueName = process.env.MOSQUE_NAME || 'Mosque Live Stream';
-  const fbUrl = process.env.MOSQUE_FACEBOOK_URL || '';
-  const ytUrl = process.env.MOSQUE_YOUTUBE_URL || '';
-  const donationUrl = process.env.MOSQUE_DONATION_URL || '';
+  const orgName = process.env.ORGANIZATION_NAME || process.env.MOSQUE_NAME || 'Live Stream';
+  const fbUrl = process.env.FACEBOOK_URL || process.env.MOSQUE_FACEBOOK_URL || '';
+  const ytUrl = process.env.YOUTUBE_URL || process.env.MOSQUE_YOUTUBE_URL || '';
+  const donationUrl = process.env.DONATION_URL || process.env.MOSQUE_DONATION_URL || '';
 
   const now = new Date();
   const dateFormatted = now.toLocaleDateString('en-GB', {
@@ -52,7 +52,7 @@ export function buildDescription({ title, presetId = 'custom', customNotes = '' 
 
   const lines = [
     `${title}`,
-    `بث مباشر من ${mosqueName} | Live Broadcast from ${mosqueName}`,
+    `بث مباشر | Live Broadcast - ${orgName}`,
     `التاريخ / Date: ${dateFormatted}`,
     '',
   ];
