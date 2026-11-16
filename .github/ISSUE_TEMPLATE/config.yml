@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OBS Studio Community Forum Discussion
+    url: https://obsproject.com/forum/resources/
+    about: Ask questions, get help setting up OBS, or share multi-streaming workflows.
+  - name: Simple Streamer Documentation & Guides
+    url: https://simple-streamer.bdjlmn.com
+    about: Read user manuals, setup guides, and troubleshooting steps.

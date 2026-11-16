@@ -1,0 +1,99 @@
+name: Bug Report
+description: Report an issue or unexpected behavior in Simple Streamer
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! 
+        Before submitting, please ensure you are running the latest version of Simple Streamer and OBS Studio.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you running OBS on?
+      options:
+        - Windows 11 (64-bit)
+        - Windows 10 (64-bit)
+        - macOS (Apple Silicon M1/M2/M3/M4)
+        - macOS (Intel x86_64)
+        - Linux (Ubuntu / Fedora / Arch)
+    validations:
+      required: true
+
+  - type: input
+    id: obs_version
+    attributes:
+      label: OBS Studio Version
+      description: Which version of OBS Studio is installed (e.g. 31.0.0, 30.2.3)?
+      placeholder: "e.g. 31.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: simple_streamer_version
+    attributes:
+      label: Simple Streamer Version
+      description: Version shown in dock Settings [⚙] (e.g. 1.0.0).
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: obs_log
+    attributes:
+      label: OBS Studio Log File URL (Required)
+      description: |
+        In OBS Studio, reproduce the issue, then go to:
+        **Help → Log Files → Upload Current Log File**
+        Paste the generated `https://obsproject.com/logs/...` link below.
+      placeholder: "https://obsproject.com/logs/..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Streaming Platforms Affected
+      description: Select all destinations involved when the issue occurs.
+      options:
+        - label: YouTube Live
+        - label: Facebook Live
+        - label: Twitch
+        - label: Kick
+        - label: Custom RTMP Server
+        - label: Local Dock UI / Web Bridge
+        - label: Mobile Remote Control
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the behavior.
+      placeholder: |
+        1. Open OBS Studio and launch Simple Streamer dock
+        2. Enter stream title 'Test Broadcast'
+        3. Click '▶ START BROADCAST'
+        4. See error message in dock
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Bridge / Dock Console Logs
+      description: |
+        Paste any error text from the dock alert banner, or bridge logs from:
+        * Windows: `%APPDATA%\obs-studio\plugin_config\simple-streamer\bridge.log`
+        * macOS: `~/.simple-streamer/logs/bridge.log`
+      render: shell

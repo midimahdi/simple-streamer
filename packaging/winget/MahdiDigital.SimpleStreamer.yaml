@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
+PackageIdentifier: MahdiDigital.SimpleStreamer
+PackageVersion: 1.0.0
+PackageName: Simple Streamer
+Publisher: MAHDI DIGITAL LLC
+PublisherUrl: https://simple-streamer.bdjlmn.com
+PublisherSupportUrl: https://github.com/midimahdi/simple-streamer/issues
+Author: MAHDI DIGITAL LLC
+Moniker: simple-streamer
+PackageUrl: https://simple-streamer.bdjlmn.com
+License: MIT
+LicenseUrl: https://github.com/midimahdi/simple-streamer/blob/main/LICENSE
+Copyright: Copyright (c) 2026 MAHDI DIGITAL LLC
+ShortDescription: One-click multi-platform live streaming appliance embedded natively inside OBS Studio.
+Description: |
+  Simple Streamer is an open-source OBS Studio plugin and browser dock that allows you to broadcast simultaneously to YouTube, Facebook Live, Twitch, and Kick at 0% extra CPU re-encoding overhead.
+  Includes 1-click OAuth API sync, mid-stream metadata updates, and smartphone remote control.
+Tags:
+  - obs
+  - obs-studio
+  - streaming
+  - restream
+  - rtmp
+  - youtube-live
+  - twitch
+  - facebook-live
+  - kick
+Installers:
+  - Architecture: x64
+    InstallerType: inno
+    InstallerUrl: https://github.com/midimahdi/simple-streamer/releases/download/v1.0.0/SimpleStreamer-Setup.exe
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000 # Updated upon release build
+    Scope: user
+ManifestType: singleton
+ManifestVersion: 1.6.0

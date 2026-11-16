@@ -1,61 +1,118 @@
-# Simple Streamer
+<div align="center">
 
-<p align="center">
-  <img src="dock/icon.svg" alt="Simple Streamer Logo" width="96" height="96" />
-</p>
+# 📡 Simple Streamer
 
-<p align="center">
-  <strong>One-click multi-platform live streaming appliance embedded natively inside OBS Studio.</strong><br />
-  Broadcast simultaneously to YouTube, Facebook Live, Twitch, and Kick with 0% extra CPU re-encoding overhead and zero web dashboard friction.
-</p>
+**Zero-CPU multi-platform live streaming appliance embedded natively inside OBS Studio.**  
+*Broadcast simultaneously to YouTube, Facebook Live, Twitch & Kick with 1-click automated metadata sync, 0% duplicate encoder overhead, and phone remote control.*
 
-<p align="center">
-  <a href="#features"><img src="https://img.shields.io/badge/Platforms-YouTube%20%7C%20Facebook%20%7C%20Twitch%20%7C%20Kick-blue?style=flat-square" alt="Supported Platforms" /></a>
-  <a href="#system-compatibility"><img src="https://img.shields.io/badge/OBS%20Studio-28.0%20%E2%80%94%2031.x%2B-9333ea?style=flat-square" alt="OBS Studio 28-31+" /></a>
-  <a href="#system-compatibility"><img src="https://img.shields.io/badge/OS-Win%2010%2F11%20%7C%20macOS%20(Universal)-0284c7?style=flat-square" alt="Windows & macOS" /></a>
-  <a href="#package-managers"><img src="https://img.shields.io/badge/Package%20Managers-Winget%20%7C%20Homebrew-10b981?style=flat-square" alt="Winget & Homebrew" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License" /></a>
-</p>
+[![Latest Release](https://img.shields.io/github/v/release/midimahdi/simple-streamer?color=10B981&label=Release)](https://github.com/midimahdi/simple-streamer/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/midimahdi/simple-streamer/total?color=blue&label=Downloads)](https://github.com/midimahdi/simple-streamer/releases)
+[![Platforms](https://img.shields.io/badge/Platform-Windows%2010%2F11%20%7C%20macOS-0284c7)](https://github.com/midimahdi/simple-streamer/releases/latest)
+[![OBS Studio](https://img.shields.io/badge/OBS%20Studio-%E2%89%A5%2028.0-9333ea)](https://obsproject.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+<br/>
+
+[**📥 Direct Downloads**](#downloads) &nbsp;•&nbsp; [**🎯 Why Simple Streamer**](#why) &nbsp;•&nbsp; [**📊 Comparison**](#comparison) &nbsp;•&nbsp; [**📱 Mobile Remote**](#mobile-remote) &nbsp;•&nbsp; [**🔬 Architecture**](#architecture) &nbsp;•&nbsp; [**🛠️ Developer Guide**](#developer-guide)
+
+</div>
 
 ---
 
-## Overview
+<a id="downloads"></a>
+## ⚡ Direct Downloads (Latest Release: v1.1.0)
+
+Choose your operating system to start downloading immediately:
+
+### 🪟 Windows (10 & 11, 64-bit)
+| Edition | Direct Download Link | Description |
+| :--- | :--- | :--- |
+| **64-bit Automated Installer** | [📥 **SimpleStreamer-Setup.exe**](https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.exe) | 1-click installer: auto-registers the native C plugin, background helper, and OBS dock |
+| **Winget Package Manager** | `winget install --exact --id MahdiDigital.SimpleStreamer` | 1-line installation via Windows Package Manager |
+
+### 🍎 macOS (12 Monterey through 15 Sequoia)
+| Chipset | Direct Download Link | Description |
+| :--- | :--- | :--- |
+| **Universal DMG (Apple Silicon & Intel)** | [📥 **SimpleStreamer-Setup.dmg**](https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.dmg) | Drag-and-drop disk image containing the automated installer for M1–M4 & Intel Macs |
+| **Homebrew Cask** | `brew install --cask packaging/homebrew/simple-streamer.rb` | 1-line installation via Homebrew Cask |
+
+> [!TIP]
+> **First-Launch Notes:**
+> - **Windows:** Because Simple Streamer is an independent open-source tool without an enterprise EV certificate, Windows Defender SmartScreen may display *"Unrecognized app"*. Click **More info** $\rightarrow$ **Run anyway**.
+> - **macOS:** If Gatekeeper prompts on initial launch, right-click `Install Simple Streamer.pkg` and choose **Open**, or run once in Terminal:  
+>   `xattr -cr "/Library/Application Support/obs-studio/plugins/simple-streamer"`
+
+---
+
+<a id="why"></a>
+## 🎯 Why Simple Streamer?
 
 Most multi-streaming solutions require either:
-1. **Expensive cloud restreaming services** ($15–$50/month) that introduce cloud proxy delay and cost.
-2. **Heavy third-party multi-RTMP plugins** that re-encode video multiple times, overloading your CPU/GPU and dropping frames.
+1. **Expensive cloud restreaming services** (\$228 to \$588/year) that introduce cloud proxy latency (2–5s) and store your account credentials on third-party servers.
+2. **Heavy third-party multi-RTMP plugins** that re-encode video multiple times, running separate hardware encoders that spike CPU/GPU by 20–30% and drop frames.
 3. **Manual copy-pasting of stream keys** on every broadcast, especially Facebook Live whose temporary keys expire every 24 hours.
 
-**Simple Streamer** solves this natively inside OBS Studio. It connects directly to platform APIs, injects dynamic keys on the fly, and uses a headless zero-copy native C plugin (`simple-streamer.plugin`) that directly splits the active encoder's packet stream across $N$ RTMP outputs with **zero duplicate encoding CPU**.
+**Simple Streamer** solves this natively inside OBS Studio. It taps directly into the active hardware encoder's bitstream (NVENC, Apple VideoToolbox, QuickSync, or x264) and fans out the encoded packets across all destinations with **0% duplicate encoding CPU**.
 
-### 📊 Simple Streamer vs. Alternatives
+```
+OBS Video Engine ────► 1 Hardware Encoder ────► Zero-Copy Packet Split ────► YouTube + Twitch + Kick + Facebook
+```
 
-| Feature | Simple Streamer | Traditional Multi-RTMP (`obs-multi-rtmp`) | Cloud SaaS (Restream.io / Castr) |
-|---|---|---|---|
-| **Annual Cost** | **Free / $5 Lifetime** | Free | $228 to $588 / year |
-| **Extra CPU Usage** | **0% (Encoder Sharing)** | High (Runs $N$ separate encoders) | 0% (Relayed in cloud) |
+| Core Feature | What It Does | Why It Matters |
+| :--- | :--- | :--- |
+| **⚡ 0% Duplicate Encoder CPU** | Multiplexes packets from OBS's active hardware encoder | Stream to 4+ platforms simultaneously without needing a dual-PC setup or dropping a single frame. |
+| **🚀 Universal 1-Click Broadcast** | Auto-creates YouTube & Facebook broadcasts via official APIs | Type title & description once. Simple Streamer schedules broadcasts and injects fresh keys automatically. |
+| **📱 Mobile Phone Remote Control** | Web remote accessible via local Wi-Fi or cellular cloud | Trigger scenes, monitor confidence preview, adjust master audio, and start/stop streams from your phone. |
+| **📝 Mid-Stream Metadata Updates** | Updates live titles and descriptions while streaming | Correct typos or update stream details across all platforms simultaneously without stopping OBS. |
+| **🔄 Safe OBS Profile Restore** | Automatically snapshots OBS stream settings before live | Restores your previous personal settings on teardown so manual streaming setups are never broken. |
+| **📊 Real-Time Dock Telemetry** | Monitored bitrate, FPS, dropped frame % and health badges | Full stream health visibility directly inside your OBS sidebar—no secondary browser dashboards. |
+| **🔒 Zero-Knowledge & Local-First** | Tokens and configuration stay strictly in client-side storage | Zero cloud database. Your video never transits our servers, and credentials stay on your PC. |
+
+---
+
+<a id="comparison"></a>
+## 📊 Simple Streamer vs. Alternatives
+
+| Capability | Simple Streamer | Traditional Multi-RTMP (`obs-multi-rtmp`) | Cloud SaaS (Restream.io / Castr) |
+| :--- | :--- | :--- | :--- |
+| **Annual Cost** | **Free / \$5 Lifetime** | Free | \$228 to \$588 / year |
+| **Extra CPU Usage** | **0% (Encoder Sharing)** | High (Runs separate encoders) | 0% (Relayed in cloud) |
 | **Stream Key Setup** | **1-Click Automated Sync** | Manual copy-paste every stream | Automated API |
 | **Broadcast Latency** | **Direct RTMP (0s delay)** | Direct RTMP (0s delay) | Added cloud delay (2–5s) |
-| **Mobile Wi-Fi Remote** | **Included (Native Phone Control)** | ❌ None | ❌ Requires 3rd-party apps |
+| **Mobile Remote Control** | **Included (Wi-Fi + Cellular)** | ❌ None | ❌ Requires 3rd-party apps |
+| **Mid-Stream Title Updates** | **1-Click Unified Update** | ❌ None | Web dashboard only |
 | **Data Privacy** | **100% Local-First / Open Source** | Local-First | Proprietary Cloud SaaS |
 
 ---
 
-## Key Features
+<a id="mobile-remote"></a>
+## 📱 Mobile Remote Control & Confidence Monitoring
 
-- **Universal 1-Click Go Live:** Enter title and description once; broadcast simultaneously to YouTube, Facebook Pages, Twitch, and Kick.
-- **0% Duplicate Encoding CPU:** Replaces multi-encoder plugins with a native C plugin that taps OBS's active encoder bitstream directly.
-- **Dynamic Facebook Key Inversion:** Automatically creates `LIVE_NOW` broadcasts via Meta Graph API v21.0 and sets up the RTMP endpoint dynamically.
-- **Built-in 1-Click OAuth:** Connect channels directly from the OBS dock UI with zero token copying. Stream keys (including Kick via OAuth `streamkey:read`) are discovered automatically.
-- **Live In-Dock Telemetry:** Real-time upload bitrate, output FPS, dropped frame percentage, and per-destination connection badges (`LIVE`, `STARTING`, `FAILED`).
-- **Clean Remote Teardown:** Terminating stream in OBS automatically concludes the broadcast on remote platforms (ending Facebook Live and transitioning YouTube broadcasts cleanly).
-- **Non-Destructive OBS Settings:** Automatically snapshots your personal OBS `Settings → Stream` configuration before broadcast kickoff and restores it upon stream termination so manual streaming setups are never lost.
-- **Mobile Remote Control & Confidence Preview:** Control scenes (Stage & Cut), monitor master audio VU levels, and kickoff broadcasts from a smartphone via zero-IP mDNS (`http://simple-streamer.local:45455/remote`).
-- **Stateless & Privacy-First:** Zero database. All OAuth tokens and stream destinations are stored strictly in client-side OBS `localStorage`.
+Simple Streamer includes a built-in mobile control interface. Scan the QR code displayed in the OBS dock to control your broadcast from any smartphone:
+
+- **Scene Switching:** Studio Mode controls (Stage & Cut) with responsive touch buttons.
+- **Audio Monitoring:** Real-time master microphone VU meter and 1-tap mute toggle.
+- **Stream Info:** View live broadcast timer, active output platforms, and stream health.
+- **Dual Connectivity:** Works over zero-configuration local Wi-Fi (`mDNS`) or encrypted cellular cloud relay (WebRTC / TURN).
 
 ---
 
-## Architecture
+<a id="architecture"></a>
+<details>
+<summary><b>🔬 Technical Architecture & Safety Mechanisms</b></summary>
+
+### Zero-Copy Encoder Multiplexing
+Simple Streamer uses a lightweight headless native C plugin (`simple-streamer.plugin`) written against `libobs`.
+Instead of creating independent encoder instances (which re-encode the frame), it intercepts the primary streaming output:
+1. Obtains the active video and audio encoders from `obs_frontend_get_streaming_output()`.
+2. Attaches secondary RTMP outputs (`obs_output_t`) directly to the running encoders via `obs_output_set_video_encoder()` and `obs_output_set_audio_encoder()`.
+3. When the encoder produces an NAL packet, `libobs` broadcasts the packet to all attached outputs simultaneously.
+
+### Stream Lifecycle & Isolation
+- **Managed Broadcasts:** When started from Simple Streamer, all selected platforms are orchestrated and monitored with live telemetry.
+- **External Stream Safety:** If you start a broadcast natively via OBS or another plugin, Simple Streamer automatically recognizes it as an external stream (`● OBS STREAMING (EXTERNAL)`), leaving your manual workflow undisturbed.
+
+### Topology Overview
 
 ```mermaid
 flowchart TD
@@ -96,120 +153,56 @@ flowchart TD
     NativePlugin -->|Stream 4| KC
 ```
 
----
-
-## Project Structure
-
+### Project Directory Structure
 ```text
 simple-streamer/
-├── backend/                  # Google Cloud Run stateless middleware (Node.js 20)
-│   ├── src/                  # API routes (/orchestrate-live, /end-live, OAuth callbacks)
-│   ├── Dockerfile            # Production container configuration
-│   └── deploy-cloud-run.sh   # Automated GCP deployment script
 ├── dock/                     # OBS Studio custom browser dock (HTML, CSS, JS)
-│   ├── index.html            # Main dark-themed operational control UI
-│   ├── app.js                # Dock logic & state management
-│   ├── obs-client.js         # Zero-dependency OBS WebSocket v5 client
-│   └── style.css             # High-contrast accessible design
-├── plugin/                   # Custom Native C plugin for OBS Studio
-│   ├── src/simple-streamer.c # Native multi-RTMP output handler (0% extra CPU)
-│   ├── build-mac.sh          # Native macOS universal compilation script
-│   └── include/              # libobs headers & interfaces
-├── installer/                # 1-Click native automated installers
-│   ├── macos/                # macOS installer package (.pkg / .dmg builder)
-│   └── windows/              # Windows Inno Setup installer script (.iss / .bat)
-├── cloudflare-site/          # Cloudflare Worker edge proxy & legal pages
-│   └── src/index.ts          # Edge proxy rules (/privacy, /terms, /data-deletion)
-├── docs/                     # Comprehensive documentation suite
-│   ├── PRODUCT_OVERVIEW.md   # Master product reference & feature tiers
-│   ├── USER_GUIDE.md         # End-user and operator handbook
-│   ├── architecture.md       # Technical spec & sequence diagrams
-│   └── DEVELOPER_GUIDE.md    # Contributor & compilation guide
-└── scripts/                  # CLI utilities & diagnostic test suites
+├── plugin/                   # Custom Native C plugin for OBS Studio (libobs zero-copy)
+├── backend/                  # Google Cloud Run stateless middleware (Node.js 20)
+├── cloudflare-site/          # Cloudflare Worker edge proxy & landing page
+├── installer/                # Automated installer scripts (Windows Inno Setup & macOS PKG)
+├── packaging/                # Package manager manifests (Winget & Homebrew Cask)
+└── scripts/                  # Diagnostic test suites & orchestrator verification
 ```
+</details>
 
 ---
 
-## Quickstart
+<a id="developer-guide"></a>
+<details>
+<summary><b>🛠️ Developer Guide: Building from Source</b></summary>
 
-### 1. Download & Install
+### Prerequisites
+- CMake 3.20+
+- OBS Studio 28.0+ headers / development libraries
+- Node.js 20+ (for dock and backend tests)
+- Xcode (macOS) or Visual Studio 2022 (Windows)
 
-* **macOS:** Download `SimpleStreamer-Setup.dmg` from [Releases](https://github.com/midimahdi/simple-streamer/releases) and double-click `Install Simple Streamer.pkg`.
-* **Windows:** Download and run `SimpleStreamer-Setup.exe`.
-
-The installer automatically installs the native plugin, registers the background bridge helper, and configures the OBS browser dock.
-
-### Package Managers
-
-Fast 1-line installation via your system package manager:
-
-**Windows (Winget):**
-```powershell
-winget install --exact --id MahdiDigital.SimpleStreamer
-```
-
-**macOS (Homebrew Cask):**
+### Building the Native Plugin (macOS)
 ```bash
-brew install --cask packaging/homebrew/simple-streamer.rb
+cd plugin
+bash build-mac.sh
 ```
+This produces the universal binary (`simple-streamer.plugin`) for both Apple Silicon (`arm64`) and Intel (`x86_64`) and copies it into your OBS plugins directory.
+
+### Running Backend Verification Suite
+```bash
+cd backend
+npm test
+```
+Runs the full 9/9 automated orchestrator test suite covering OAuth gatekeeping, anti-spam rate limiting, cloud preset conflict resolution, and Stripe verification.
+</details>
 
 ---
 
-## System Compatibility
+## 💬 Community & Bug Reports
 
-- **OBS Studio:** Version 28.0.0 through 31.x+ (OBS WebSocket v5 enabled by default)
-- **Windows:** Windows 10 & Windows 11 (64-bit)
-- **macOS:** macOS 12 (Monterey), 13 (Ventura), 14 (Sonoma), 15 (Sequoia) — Universal Binary (Apple Silicon M1/M2/M3/M4 & Intel x86_64)
-
----
-
-### 2. Connect Your Platforms
-
-1. Open OBS Studio. The **Simple Streamer** dock will open automatically in your sidebar.
-2. Click the **Settings `[⚙]`** button in the dock header.
-3. Click **+ Add Platform** to connect your destinations:
-   - **YouTube:** 1-Click Google OAuth.
-   - **Facebook Live:** 1-Click Facebook OAuth (select any managed Page).
-   - **Twitch:** 1-Click Twitch OAuth.
-   - **Kick:** 1-Click Kick OAuth.
-
-### 3. Go Live
-
-1. Enter your stream **Title** and optional **Description**.
-2. Toggle on the destinations you want to broadcast to using the target pills.
-3. Click **▶ START BROADCAST**.
-
-Simple Streamer orchestrates the remote broadcasts, starts your encoders, and brings all platforms live in seconds.
-
----
-
-## Documentation Suite
-
-* [Master Product Reference](docs/PRODUCT_OVERVIEW.md) — Comprehensive product capabilities, feature ranking, and roadmap.
-* [User Guide](docs/USER_GUIDE.md) — Step-by-step operating instructions for streamers and volunteers.
-* [Architecture Specification](docs/architecture.md) — Detailed 4-tier topology, zero-copy packet splitting, and API flows.
-* [Developer & Build Guide](docs/DEVELOPER_GUIDE.md) — Compiling the C plugin, packaging installers, and cloud deployments.
-
----
-
-## Security & Privacy
-
-Simple Streamer is engineered around a **zero-knowledge, stateless architecture**:
-
-- **No User Database:** The cloud backend never stores passwords, user accounts, stream keys, or tokens.
-- **Local Credential Storage:** Tokens exist solely in your local OBS client-side storage and can be wiped instantly by clicking Disconnect or clearing local data.
-- **GDPR & CCPA Compliant:** Full compliance documentation, terms of service, and user data deletion instructions are published at [simple-streamer.bdjlmn.com/data-deletion](https://simple-streamer.bdjlmn.com/data-deletion).
-
----
-
-## Community & Bug Reports
-
-- **Bug Reports:** If you encounter unexpected behavior, please submit a report using the [GitHub Bug Report Form](https://github.com/midimahdi/simple-streamer/issues/new?template=bug_report.yml). *Please include your OBS Log File URL via **Help → Log Files → Upload Current Log File**.*
+- **Bug Reports:** Encountered an issue? Submit a report via the [GitHub Bug Report Form](https://github.com/midimahdi/simple-streamer/issues/new?template=bug_report.yml). *Please include your OBS Log URL via **Help → Log Files → Upload Current Log File**.*
 - **Feature Requests:** Propose new platforms or automation features via the [Feature Request Form](https://github.com/midimahdi/simple-streamer/issues/new?template=feature_request.yml).
-- **OBS Forums Resource:** See our official [OBS Studio Resource Listing Draft](docs/OBS_FORUMS_RESOURCE_LISTING.md) to join the community thread.
+- **OBS Forums Resource:** Join our official [OBS Studio Resource Listing Thread](docs/OBS_FORUMS_RESOURCE_LISTING.md).
 
 ---
 
-## License
+## 📜 License
 
-Distributed under the **MIT License**. Created by [MAHDI DIGITAL LLC](https://bdjlmn.com).
+Distributed under the **MIT License**. Copyright (c) 2026 **Mahdi (MAHDI DIGITAL LLC)**. See [LICENSE](LICENSE) for details.
