@@ -120,12 +120,19 @@ if (-not (Test-Path $wsConfigFile)) {
 $UserPluginDir = "$ObsDir\plugins\simple-streamer\bin\64bit"
 if (-not (Test-Path $UserPluginDir)) { New-Item -ItemType Directory -Path $UserPluginDir -Force | Out-Null }
 
-$localDll = Join-Path $PSScriptRoot "plugin\64bit\simple-streamer.dll"
-if (-not (Test-Path $localDll)) { $localDll = Join-Path $PSScriptRoot "simple-streamer.dll" }
-if (-not (Test-Path $localDll)) { $localDll = Join-Path $PSScriptRoot "..\..\plugin\build\x64\simple-streamer.dll" }
+$localDll = $null
+if ($PSScriptRoot) {
+    if (Test-Path (Join-Path $PSScriptRoot "plugin\64bit\simple-streamer.dll")) {
+        $localDll = Join-Path $PSScriptRoot "plugin\64bit\simple-streamer.dll"
+    } elseif (Test-Path (Join-Path $PSScriptRoot "simple-streamer.dll")) {
+        $localDll = Join-Path $PSScriptRoot "simple-streamer.dll"
+    } elseif (Test-Path (Join-Path $PSScriptRoot "..\..\plugin\build\x64\simple-streamer.dll")) {
+        $localDll = Join-Path $PSScriptRoot "..\..\plugin\build\x64\simple-streamer.dll"
+    }
+}
 $installedDll = "$UserPluginDir\simple-streamer.dll"
 
-if (Test-Path $localDll) {
+if ($localDll -and (Test-Path $localDll)) {
     Copy-Item -Path $localDll -Destination $installedDll -Force
     Write-Host "    [OK] Simple Streamer native plugin installed from local bundle." -ForegroundColor Green
 } else {
@@ -169,13 +176,21 @@ try {
 } catch {}
 
 # Copy Mobile Remote Web UI & Dock assets to bridge directory & plugin config
-$DockDir = "$PSScriptRoot\..\..\dock"
-if (-not (Test-Path $DockDir)) { $DockDir = "$PSScriptRoot\dock" }
-if (-not (Test-Path $DockDir)) { $DockDir = "$BridgeDir\dock" }
+$DockDir = $null
+if ($PSScriptRoot) {
+    if (Test-Path "$PSScriptRoot\..\..\dock") {
+        $DockDir = "$PSScriptRoot\..\..\dock"
+    } elseif (Test-Path "$PSScriptRoot\dock") {
+        $DockDir = "$PSScriptRoot\dock"
+    }
+}
+if (-not $DockDir -and (Test-Path "$BridgeDir\dock")) {
+    $DockDir = "$BridgeDir\dock"
+}
 $PluginConfigDir = "$ObsDir\plugin_config\simple-streamer"
 if (-not (Test-Path $PluginConfigDir)) { New-Item -ItemType Directory -Path $PluginConfigDir -Force | Out-Null }
 
-if (Test-Path $DockDir) {
+if ($DockDir -and (Test-Path $DockDir)) {
     Copy-Item -Path "$DockDir\*" -Destination $BridgeDir -Recurse -Force
     Copy-Item -Path "$DockDir\*" -Destination $PluginConfigDir -Recurse -Force
     Write-Host "    [OK] Dock and Remote assets deployed from local bundle." -ForegroundColor Green
