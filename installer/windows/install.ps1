@@ -27,15 +27,15 @@ if (-not (Test-Path $ObsDir)) {
 
 # 3. Register Custom Browser Dock
 $DockName = "Simple Streamer"
-$DockUrl = "http://127.0.0.1:45455/dock"
+$DockUrl = "https://simple-streamer.bdjlmn.com/dock"
 
 function Set-ObsDockConfig($file) {
     if (-not (Test-Path $file)) { return }
     $content = Get-Content $file -Raw -Encoding utf8
 
-    # 1. Migrate legacy remote URLs
-    if ($content -match 'https://simple-streamer\.bdjlmn\.com/dock') {
-        $content = $content -replace 'https://simple-streamer\.bdjlmn\.com/dock', $DockUrl
+    # 1. Migrate legacy local bridge URLs to production auto-updating cloud dock
+    if ($content -match 'http://127\.0\.0\.1:45455/dock') {
+        $content = $content -replace 'http://127\.0\.0\.1:45455/dock', $DockUrl
     }
 
     # 2. Configure Modern OBS 28-31+ format (JSON string under [BasicWindow])
@@ -186,9 +186,6 @@ if ($PSScriptRoot) {
     } elseif (Test-Path "$PSScriptRoot\dock") {
         $DockDir = "$PSScriptRoot\dock"
     }
-}
-if (-not $DockDir -and (Test-Path "$BridgeDir\dock")) {
-    $DockDir = "$BridgeDir\dock"
 }
 $PluginConfigDir = "$ObsDir\plugin_config\simple-streamer"
 if (-not (Test-Path $PluginConfigDir)) { New-Item -ItemType Directory -Path $PluginConfigDir -Force | Out-Null }
