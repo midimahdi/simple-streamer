@@ -1533,7 +1533,7 @@ function homeHtml(): string {
       <div class="hero-ctas">
         <div class="cta-row">
           <a id="primaryDownloadBtn" href="https://github.com/midimahdi/simple-streamer/releases/latest" class="btn btn-primary">
-            ⬇️ Download Free (OBS 30+)
+            ⬇️ Download Free (OBS 28.0+)
           </a>
           <a href="https://github.com/midimahdi/simple-streamer" target="_blank" class="btn btn-secondary">
             ⭐ View on GitHub
@@ -1543,7 +1543,7 @@ function homeHtml(): string {
           <span>Free & Open Source · For </span>
           <a href="https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.exe">Windows 10/11 (.exe)</a> · 
           <a href="https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Setup.dmg">macOS (.dmg)</a> · 
-          <a href="#compatibility">OBS 30.0+</a>
+          <a href="#compatibility">OBS 28.0+</a>
         </div>
       </div>
     </div>
@@ -1718,7 +1718,7 @@ function homeHtml(): string {
       <div class="faq-item">
         <div class="faq-question">Which OBS versions and Operating Systems are supported?</div>
         <div class="faq-answer">
-          Simple Streamer is built for <strong>OBS Studio 30.0 or higher</strong> on <strong>Windows 10/11 (64-bit)</strong> and <strong>macOS (Apple Silicon M1-M4 & Intel)</strong>. Linux broadcasters can run the open-source browser dock natively inside OBS Linux.
+          Simple Streamer is built for <strong>OBS Studio 28.0 or higher</strong> on <strong>Windows 10/11 (64-bit)</strong> and <strong>macOS (Apple Silicon M1-M4 & Intel)</strong>. Linux broadcasters can run the open-source browser dock natively inside OBS Linux.
         </div>
       </div>
 
