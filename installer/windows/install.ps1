@@ -681,16 +681,8 @@ while ($listener.IsListening) {
         }
 
         if ($path -eq "/dock" -or $path -eq "/dock/" -or $path -eq "/dock/index.html") {
-            $dockFile = "$BridgeDir\index.html"
-            if (-not (Test-Path $dockFile)) { $dockFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\index.html" }
-            if (Test-Path $dockFile) {
-                $bytes = [System.IO.File]::ReadAllBytes($dockFile)
-                $res.ContentType = "text/html; charset=utf-8"
-                $res.AddHeader("Cache-Control", "no-cache")
-                $res.OutputStream.Write($bytes, 0, $bytes.Length)
-            } else {
-                $res.StatusCode = 404
-            }
+            $res.StatusCode = 302
+            $res.AddHeader("Location", "https://simple-streamer.bdjlmn.com/dock")
             $res.Close()
             continue
         }
