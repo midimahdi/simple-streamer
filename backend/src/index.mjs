@@ -323,12 +323,12 @@ export async function handleRequest(req, res) {
     const proOffer = {
       dealActive: isDealActive,
       expiresAt: dealExpiryStr || null,
-      price: isDealActive ? (process.env.PRO_DEAL_PRICE || '$3') : null,
+      price: isDealActive ? (process.env.PRO_DEAL_PRICE || '$5') : null,
       ctaLabel: isDealActive
-        ? `⚡ Upgrade to Pro (${process.env.PRO_DEAL_PRICE || '$3'} Limited Deal) ↗`
+        ? `⚡ Upgrade to Pro (${process.env.PRO_DEAL_PRICE || '$5'} Limited Deal) ↗`
         : '⚡ Upgrade to Pro ↗',
       alertCtaLabel: isDealActive
-        ? `UPGRADE PRO (${process.env.PRO_DEAL_PRICE || '$3'}) ↗`
+        ? `UPGRADE PRO (${process.env.PRO_DEAL_PRICE || '$5'}) ↗`
         : 'UPGRADE PRO ↗',
       paymentUrl: currentPaymentUrl,
     };

@@ -11,9 +11,9 @@
 
 <p align="center">
   <a href="#features"><img src="https://img.shields.io/badge/Platforms-YouTube%20%7C%20Facebook%20%7C%20Twitch%20%7C%20Kick-blue?style=flat-square" alt="Supported Platforms" /></a>
-  <a href="#architecture"><img src="https://img.shields.io/badge/OBS%20Studio-%E2%89%A5%2030.0-9333ea?style=flat-square" alt="OBS Studio" /></a>
-  <a href="#architecture"><img src="https://img.shields.io/badge/Plugin-Native%20C11-0284c7?style=flat-square" alt="Native C Plugin" /></a>
-  <a href="#architecture"><img src="https://img.shields.io/badge/Backend-Cloud%20Run%20(Node.js)-10b981?style=flat-square" alt="Cloud Run Backend" /></a>
+  <a href="#system-compatibility"><img src="https://img.shields.io/badge/OBS%20Studio-28.0%20%E2%80%94%2031.x%2B-9333ea?style=flat-square" alt="OBS Studio 28-31+" /></a>
+  <a href="#system-compatibility"><img src="https://img.shields.io/badge/OS-Win%2010%2F11%20%7C%20macOS%20(Universal)-0284c7?style=flat-square" alt="Windows & macOS" /></a>
+  <a href="#package-managers"><img src="https://img.shields.io/badge/Package%20Managers-Winget%20%7C%20Homebrew-10b981?style=flat-square" alt="Winget & Homebrew" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-amber?style=flat-square" alt="License" /></a>
 </p>
 
@@ -22,11 +22,22 @@
 ## Overview
 
 Most multi-streaming solutions require either:
-1. **Expensive cloud restreaming services** ($15–$50/month) that increase stream latency and cost.
-2. **Heavy third-party multi-RTMP plugins** that re-encode video multiple times, overloading system CPU and causing dropped frames.
+1. **Expensive cloud restreaming services** ($15–$50/month) that introduce cloud proxy delay and cost.
+2. **Heavy third-party multi-RTMP plugins** that re-encode video multiple times, overloading your CPU/GPU and dropping frames.
 3. **Manual copy-pasting of stream keys** on every broadcast, especially Facebook Live whose temporary keys expire every 24 hours.
 
 **Simple Streamer** solves this natively inside OBS Studio. It connects directly to platform APIs, injects dynamic keys on the fly, and uses a headless zero-copy native C plugin (`simple-streamer.plugin`) that directly splits the active encoder's packet stream across $N$ RTMP outputs with **zero duplicate encoding CPU**.
+
+### 📊 Simple Streamer vs. Alternatives
+
+| Feature | Simple Streamer | Traditional Multi-RTMP (`obs-multi-rtmp`) | Cloud SaaS (Restream.io / Castr) |
+|---|---|---|---|
+| **Annual Cost** | **Free / $5 Lifetime** | Free | $228 to $588 / year |
+| **Extra CPU Usage** | **0% (Encoder Sharing)** | High (Runs $N$ separate encoders) | 0% (Relayed in cloud) |
+| **Stream Key Setup** | **1-Click Automated Sync** | Manual copy-paste every stream | Automated API |
+| **Broadcast Latency** | **Direct RTMP (0s delay)** | Direct RTMP (0s delay) | Added cloud delay (2–5s) |
+| **Mobile Wi-Fi Remote** | **Included (Native Phone Control)** | ❌ None | ❌ Requires 3rd-party apps |
+| **Data Privacy** | **100% Local-First / Open Source** | Local-First | Proprietary Cloud SaaS |
 
 ---
 
@@ -128,6 +139,30 @@ simple-streamer/
 
 The installer automatically installs the native plugin, registers the background bridge helper, and configures the OBS browser dock.
 
+### Package Managers
+
+Fast 1-line installation via your system package manager:
+
+**Windows (Winget):**
+```powershell
+winget install --exact --id MahdiDigital.SimpleStreamer
+```
+
+**macOS (Homebrew Cask):**
+```bash
+brew install --cask packaging/homebrew/simple-streamer.rb
+```
+
+---
+
+## System Compatibility
+
+- **OBS Studio:** Version 28.0.0 through 31.x+ (OBS WebSocket v5 enabled by default)
+- **Windows:** Windows 10 & Windows 11 (64-bit)
+- **macOS:** macOS 12 (Monterey), 13 (Ventura), 14 (Sonoma), 15 (Sequoia) — Universal Binary (Apple Silicon M1/M2/M3/M4 & Intel x86_64)
+
+---
+
 ### 2. Connect Your Platforms
 
 1. Open OBS Studio. The **Simple Streamer** dock will open automatically in your sidebar.
@@ -164,6 +199,14 @@ Simple Streamer is engineered around a **zero-knowledge, stateless architecture*
 - **No User Database:** The cloud backend never stores passwords, user accounts, stream keys, or tokens.
 - **Local Credential Storage:** Tokens exist solely in your local OBS client-side storage and can be wiped instantly by clicking Disconnect or clearing local data.
 - **GDPR & CCPA Compliant:** Full compliance documentation, terms of service, and user data deletion instructions are published at [simple-streamer.bdjlmn.com/data-deletion](https://simple-streamer.bdjlmn.com/data-deletion).
+
+---
+
+## Community & Bug Reports
+
+- **Bug Reports:** If you encounter unexpected behavior, please submit a report using the [GitHub Bug Report Form](https://github.com/midimahdi/simple-streamer/issues/new?template=bug_report.yml). *Please include your OBS Log File URL via **Help → Log Files → Upload Current Log File**.*
+- **Feature Requests:** Propose new platforms or automation features via the [Feature Request Form](https://github.com/midimahdi/simple-streamer/issues/new?template=feature_request.yml).
+- **OBS Forums Resource:** See our official [OBS Studio Resource Listing Draft](docs/OBS_FORUMS_RESOURCE_LISTING.md) to join the community thread.
 
 ---
 

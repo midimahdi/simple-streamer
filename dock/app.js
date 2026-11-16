@@ -54,8 +54,8 @@ const state = {
   },
   proOffer: {
     dealActive: true,
-    ctaLabel: '⚡ Claim Lifetime Pass ($3 Once) ↗',
-    alertCtaLabel: 'LIFETIME PASS ($3) ↗',
+    ctaLabel: '⚡ Claim Lifetime Pass ($5 Once) ↗',
+    alertCtaLabel: 'LIFETIME PASS ($5) ↗',
     paymentUrl: 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01',
     expiresAt: null,
   },
@@ -447,7 +447,7 @@ async function checkForAppUpdates() {
 
 /**
  * Returns dynamic, conditional Pro offer details.
- * When the deal expires or is deactivated, all deal text ($3, limited deal) cleanly disappears.
+ * When the deal expires or is deactivated, all deal text ($5, limited deal) cleanly disappears.
  */
 function getProOffer() {
   const offer = state.proOffer || {};
@@ -461,13 +461,13 @@ function getProOffer() {
   const paymentUrl = offer.paymentUrl || state.config.stripePaymentUrl || 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01';
   return {
     dealActive: isDealActive,
-    title: isDealActive ? '🔥 LIFETIME FOUNDING DEAL — $3 ONCE' : '⭐ SIMPLE STREAMER PRO ($12/YR)',
+    title: isDealActive ? '🔥 LIFETIME FOUNDING DEAL — $5 ONCE' : '⭐ SIMPLE STREAMER PRO ($12/YR)',
     dealBadge: isDealActive ? 'LIMITED DEAL' : 'ANNUAL',
     ctaLabel: isDealActive
-      ? (offer.ctaLabel || '⚡ Claim Lifetime Pass ($3 Once) ↗')
+      ? (offer.ctaLabel || '⚡ Claim Lifetime Pass ($5 Once) ↗')
       : '⚡ Upgrade to Pro ($12/yr) ↗',
     alertCtaLabel: isDealActive
-      ? (offer.alertCtaLabel || 'LIFETIME PASS ($3) ↗')
+      ? (offer.alertCtaLabel || 'LIFETIME PASS ($5) ↗')
       : 'UPGRADE PRO ↗',
     paymentUrl,
   };

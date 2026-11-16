@@ -1103,7 +1103,7 @@ function accountHtml(): string {
                 if (actionArea) {
                   var lifetimeUrl = 'https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01?client_reference_id=' + encodeURIComponent(currentUser.id) + '&prefilled_email=' + encodeURIComponent(currentUser.email || '');
                   var annualUrl = 'https://buy.stripe.com/14A4gz2MSbG72c431W5EY00?client_reference_id=' + encodeURIComponent(currentUser.id) + '&prefilled_email=' + encodeURIComponent(currentUser.email || '');
-                  actionArea.innerHTML = '<div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;"><a href="' + lifetimeUrl + '" class="btn btn-gold btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">🔥 Claim Lifetime Deal — $3 Once</a><a href="' + annualUrl + '" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">Annual $12/yr</a></div>';
+                  actionArea.innerHTML = '<div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;"><a href="' + lifetimeUrl + '" class="btn btn-gold btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">🔥 Claim Lifetime Deal — $5 Once</a><a href="' + annualUrl + '" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">Annual $12/yr</a></div>';
                 }
               }
             }
@@ -1548,18 +1548,18 @@ function homeHtml(): string {
       </div>
     </div>
 
-    <!-- Founding 100 Lifetime Pass ($3 One-Time) -->
+    <!-- Founding 100 Lifetime Pass ($5 One-Time) -->
     <div class="founding-banner" id="foundingBanner">
       <div id="foundingSlotLiveText" style="display: inline-block; background: #161a24; border: 1px solid #2d3748; color: #fbbf24; padding: 5px 14px; border-radius: 6px; font-size: 13px; font-weight: 700; margin-bottom: 14px; letter-spacing: 0.2px;">
         Founding Member Tier · Limited to First 100 Broadcasters
       </div>
-      <h2 id="foundingHeadline">$3 Lifetime Access (First 100 Streamers)</h2>
+      <h2 id="foundingHeadline">$5 Lifetime Access (First 100 Streamers)</h2>
       <p style="max-width: 640px; margin: 0 auto 20px; font-size: 15px; color: #fde68a; line-height: 1.5;">
-        Lock in permanent Pro access for a single \$3 payment. No recurring bills. The first 100 broadcasters get lifetime 1-click broadcast creation, unified titles & descriptions across all 4 platforms, mid-stream title & description updates, and mobile cloud remote.
+        Lock in permanent Pro access for a single \$5 payment. No recurring bills. The first 100 broadcasters get lifetime 1-click broadcast creation, unified titles & descriptions across all 4 platforms, mid-stream title & description updates, and mobile cloud remote.
       </p>
       <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center;">
         <a id="btnFoundingClaim" href="https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01" class="btn btn-gold" style="font-size: 16px; padding: 14px 28px;">
-          ⚡ Claim Lifetime Pass — $3 Once →
+          ⚡ Claim Lifetime Pass — $5 Once →
         </a>
         <a href="https://github.com/midimahdi/simple-streamer/releases/latest" class="btn btn-secondary">
           Download Free Core
@@ -1702,7 +1702,7 @@ function homeHtml(): string {
         </div>
         <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
           <div style="color: #34d399; font-weight: 700; font-size: 15px; margin-bottom: 6px;">💰 \$228–\$588/yr Saved</div>
-          <div style="color: #94a3b8; font-size: 13px; line-height: 1.5;">Free forever for core streaming or \$3 once for the founding pass, eliminating recurring monthly subscription fees.</div>
+          <div style="color: #94a3b8; font-size: 13px; line-height: 1.5;">Free forever for core streaming or \$5 once for the founding pass, eliminating recurring monthly subscription fees.</div>
         </div>
         <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
           <div style="color: #f59e0b; font-weight: 700; font-size: 15px; margin-bottom: 6px;">📝 Unified Broadcast Info</div>
