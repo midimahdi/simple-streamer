@@ -1450,8 +1450,8 @@ function renderAuthErrorHtml(title, message) {
     }
   }
 
-  // 3. Stripe Webhook Listener
-  if (req.method === 'POST' && pathname === '/api/webhooks/stripe') {
+  // 3. Stripe Webhook Listener (Accepts both /api/webhooks/stripe and /api/stripe-webhook)
+  if (req.method === 'POST' && (pathname === '/api/webhooks/stripe' || pathname === '/api/stripe-webhook')) {
     try {
       const sig = req.headers['stripe-signature'];
       const secret = process.env.STRIPE_WEBHOOK_SECRET;
