@@ -283,7 +283,7 @@ export async function getYouTubeBroadcastStatus(broadcastId, refreshToken) {
     }
 
     const lifeCycle = item.status?.lifeCycleStatus; // 'created', 'ready', 'liveStarting', 'live', 'complete'
-    const isLive = lifeCycle === 'live';
+    const isLive = lifeCycle === 'live' || lifeCycle === 'liveStarting' || lifeCycle === 'testing' || lifeCycle === 'ready';
 
     return {
       isLive,

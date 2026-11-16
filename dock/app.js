@@ -4107,6 +4107,17 @@ function startMetricsPolling() {
             updateCardBadge(secDest.id, 'live', 'LIVE');
             secDest.isLive = true;
           }
+        } else if (stats.outputActive) {
+          // The C native plugin starts and streams secondary outputs whenever the main OBS stream is active.
+          // Because OBS-WebSocket does not track dynamically created C-plugin outputs via GetOutputStatus,
+          // secondary outputs inherit the active streaming state from the main OBS stream.
+          if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete' || secDest.cloudStatus === 'error') {
+            updateCardBadge(secDest.id, 'offline', 'ENDED');
+            secDest.isLive = false;
+          } else {
+            updateCardBadge(secDest.id, 'live', 'LIVE');
+            secDest.isLive = true;
+          }
         } else {
           const elapsed = Date.now() - (state.streamStartTime || Date.now());
           if (elapsed < 6000) {
@@ -4165,17 +4176,19 @@ async function pollCloudStatus() {
     const data = await res.json();
 
     if (activeFB && data.facebook) {
+      activeFB.cloudStatus = data.facebook.status;
       if (data.facebook.isLive) {
         activeFB.isLive = true;
         updateCardBadge(activeFB.id, 'live', 'LIVE');
-      } else if (data.facebook.status === 'VOD') {
+      } else if (data.facebook.status === 'VOD' || data.facebook.status === 'ENDED') {
         activeFB.isLive = false;
         updateCardBadge(activeFB.id, 'offline', 'ENDED');
       }
     }
 
     if (activeYT && data.youtube) {
-      if (data.youtube.isLive) {
+      activeYT.cloudStatus = data.youtube.status;
+      if (data.youtube.isLive || data.youtube.status === 'ready' || data.youtube.status === 'liveStarting' || data.youtube.status === 'testing') {
         activeYT.isLive = true;
         updateCardBadge(activeYT.id, 'live', 'LIVE');
       } else if (data.youtube.status === 'complete') {
