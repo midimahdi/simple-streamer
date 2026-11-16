@@ -25,12 +25,13 @@ echo "=================================================="
 
 ENV_ARG="--update-env-vars=NODE_ENV=production"
 if [ -f ".env" ]; then
-  ENV_YAML="$(mktemp /tmp/cloudrun-env-XXXXXX.yaml)"
+  ENV_YAML="$(mktemp /tmp/cloudrun-env-XXXXXX)"
   trap 'rm -f "$ENV_YAML"' EXIT
   node -e '
     const fs = require("fs");
     const lines = fs.readFileSync(".env", "utf8").split("\n");
-    const yaml = ["NODE_ENV: \"production\""];
+    const map = new Map();
+    map.set("NODE_ENV", "production");
     for (const line of lines) {
       const t = line.trim();
       if (t && !t.startsWith("#") && t.includes("=")) {
@@ -40,8 +41,12 @@ if [ -f ".env" ]; then
         if ((v.startsWith("\"") && v.endsWith("\"")) || (v.startsWith("\x27") && v.endsWith("\x27"))) {
           v = v.slice(1, -1);
         }
-        yaml.push(`${k}: "${v.replace(/"/g, "\\\"")}"`);
+        map.set(k, v);
       }
+    }
+    const yaml = [];
+    for (const [k, v] of map.entries()) {
+      yaml.push(`${k}: "${v.replace(/"/g, "\\\"")}"`);
     }
     fs.writeFileSync(process.argv[1], yaml.join("\n"));
   ' "$ENV_YAML"
@@ -61,6 +66,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --memory=256Mi \
   --cpu=1 \
   --timeout=30s \
+  --quiet \
   $ENV_ARG
 
 echo ""

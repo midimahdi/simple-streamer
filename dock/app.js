@@ -3807,13 +3807,19 @@ async function retryDestination(destId) {
     if (dest.platform === 'facebook' || dest.platform === 'youtube') {
       try {
         const title = el.lessonTitle ? el.lessonTitle.value.trim() : 'Live Stream';
+        const token = getAuthToken();
+        const hwid = await syncDeviceHwidFromBridge();
         const res = await fetch(`${state.config.backendUrl}/orchestrate-live`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(hwid ? { 'x-device-hwid': hwid } : {}),
             ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
           },
           body: JSON.stringify({
+            ...(token ? { token } : {}),
+            ...(hwid ? { hwid } : {}),
             title,
             destinations: [{
               id: dest.id,
@@ -4059,13 +4065,19 @@ async function reconcileActiveBroadcastMetadata() {
   logDiag('Watchdog: Verifying live stream metadata across destinations...');
 
   try {
+    const token = getAuthToken();
+    const hwid = await syncDeviceHwidFromBridge();
     const res = await fetch(`${state.config.backendUrl}/reconcile-metadata`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(hwid ? { 'x-device-hwid': hwid } : {}),
         ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
       },
       body: JSON.stringify({
+        ...(token ? { token } : {}),
+        ...(hwid ? { hwid } : {}),
         title: state.activeBroadcast.title,
         description: state.activeBroadcast.description || '',
         destinations: state.activeBroadcast.destinations.map((d) => ({
@@ -4117,13 +4129,19 @@ async function handleEndStream() {
 
   // Teardown remote broadcasts via backend
   if (state.activeBroadcast.destinations && state.activeBroadcast.destinations.length > 0) {
+    const token = getAuthToken();
+    const hwid = state.deviceHwid;
     fetch(`${state.config.backendUrl}/end-live`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(hwid ? { 'x-device-hwid': hwid } : {}),
         ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
       },
       body: JSON.stringify({
+        ...(token ? { token } : {}),
+        ...(hwid ? { hwid } : {}),
         destinations: state.activeBroadcast.destinations,
       }),
     }).catch((err) => logDiag(`Teardown warning: ${err.message}`));
@@ -4523,7 +4541,17 @@ function initEvents() {
 
   // OBS WebSocket Events
   state.obs.on('StreamStateChanged', (data) => {
-    if (data.outputActive) {
+    const stateStr = data.outputState || '';
+    logDiag(`OBS StreamStateChanged: active=${data.outputActive}, state=${stateStr}`);
+
+    // 1. If OBS is starting up or we are still preparing the stream, NEVER treat as stopped!
+    if (stateStr === 'OBS_WEBSOCKET_OUTPUT_STARTING' || state.isPreparing) {
+      logDiag(`OBS output state: ${stateStr || 'starting'} (in progress)`);
+      return;
+    }
+
+    // 2. Stream is actively running
+    if (data.outputActive || stateStr === 'OBS_WEBSOCKET_OUTPUT_STARTED') {
       const isManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
       if (isManaged) {
         state.isManagedStream = true;
@@ -4534,22 +4562,33 @@ function initEvents() {
         state.isExternalStream = true;
         setExternalLiveUI(true);
       }
-    } else {
-      const wasManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true' || state.isStreaming;
+      return;
+    }
+
+    // 3. Stream has genuinely stopped (OBS_WEBSOCKET_OUTPUT_STOPPED)
+    if (stateStr === 'OBS_WEBSOCKET_OUTPUT_STOPPED' || (!data.outputActive && stateStr !== 'OBS_WEBSOCKET_OUTPUT_STOPPING')) {
+      const wasActuallyStreaming = state.isStreaming;
+      const wasManaged = state.isManagedStream || sessionStorage.getItem('simple_streamer_stream_managed') === 'true';
       sessionStorage.removeItem('simple_streamer_stream_managed');
       state.isManagedStream = false;
 
-      if (wasManaged) {
-        // If stream was stopped via OBS native button or external hotkey,
-        // trigger clean teardown across remote cloud platforms
+      if (wasActuallyStreaming && wasManaged) {
+        // Only tear down if the broadcast was genuinely LIVE and active
+        logDiag('OBS stream stopped externally. Tearing down remote destinations...');
         if (state.activeBroadcast?.destinations?.length > 0) {
+          const token = getAuthToken();
+          const hwid = state.deviceHwid;
           fetch(`${state.config.backendUrl}/end-live`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              ...(hwid ? { 'x-device-hwid': hwid } : {}),
               ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
             },
             body: JSON.stringify({
+              ...(token ? { token } : {}),
+              ...(hwid ? { hwid } : {}),
               destinations: state.activeBroadcast.destinations,
             }),
           }).catch(() => {});

@@ -1006,11 +1006,11 @@ function renderAuthErrorHtml(title, message) {
       });
     }
 
-    if (!hwid || hwid.length < 8 || hwid === 'default-hwid' || hwid.startsWith('obs_dock_')) {
+    if (!hwid || hwid.length < 8 || hwid === 'default-hwid') {
       return sendJson(res, 400, {
         ok: false,
         error: 'DEVICE_IDENTIFIER_REQUIRED',
-        message: 'Valid hardware identifier from native bridge (min 8 chars) is required for machine linking.',
+        message: 'Valid hardware identifier (min 8 chars) is required for machine linking.',
       });
     }
 
@@ -1998,6 +1998,23 @@ function renderAuthErrorHtml(title, message) {
               }).catch((e) => console.warn(`[Orchestrator] YouTube thumbnail error: ${e.message}`));
             }
 
+            let resolvedStreamKey = d.streamName || d.streamKey;
+            let resolvedServerUrl = d.ingestionAddress || d.serverUrl || 'rtmp://a.rtmp.youtube.com/live2';
+
+            if (!resolvedStreamKey && d.refreshToken) {
+              try {
+                const ytToken = await getAccessToken(d.refreshToken);
+                const ytStreams = await fetchYouTubeStreams(ytToken);
+                const matched = d.streamId ? ytStreams.find((s) => s.id === d.streamId) : ytStreams[0];
+                if (matched) {
+                  if (matched.streamName) resolvedStreamKey = matched.streamName;
+                  if (matched.ingestionAddress) resolvedServerUrl = matched.ingestionAddress;
+                }
+              } catch (lookupErr) {
+                console.warn('[Orchestrator] Could not auto-resolve YouTube streamKey:', lookupErr.message);
+              }
+            }
+
             return {
               id: d.id,
               platform: 'youtube',
@@ -2005,8 +2022,8 @@ function renderAuthErrorHtml(title, message) {
               ok: true,
               broadcastId: ytRes.broadcastId,
               watchUrl: ytRes.watchUrl,
-              serverUrl: d.ingestionAddress || 'rtmp://a.rtmp.youtube.com/live2',
-              streamKey: d.streamName,
+              serverUrl: resolvedServerUrl,
+              streamKey: resolvedStreamKey,
             };
           } else if (d.platform === 'twitch') {
             let userToken = d.userToken;
