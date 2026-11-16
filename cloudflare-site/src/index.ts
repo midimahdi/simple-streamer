@@ -1624,15 +1624,6 @@ function homeHtml(): string {
               <td style="text-align: center; padding: 14px 18px; border-bottom: 1px solid var(--border); color: #fff; font-size: 13px;">Kick, Twitch & Custom RTMP</td>
               <td style="text-align: center; padding: 14px 18px; border-bottom: 1px solid var(--border); background: rgba(59, 130, 246, 0.04); border-left: 1px solid rgba(59, 130, 246, 0.2); border-right: 1px solid rgba(59, 130, 246, 0.2); color: #60a5fa; font-weight: 700;">✓ Kick, Twitch, YouTube, FB & RTMP</td>
             </tr>
-
-            <!-- Expand / Collapse Toggle Bar -->
-            <tr>
-              <td colspan="3" style="text-align: center; padding: 12px 18px; border-bottom: 1px solid var(--border); background: rgba(255, 255, 255, 0.02);">
-                <button id="btnToggleDetails" type="button" onclick="toggleDetailedSpecs()" style="background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;">
-                  <span id="toggleDetailsIcon">↓</span> <span id="toggleDetailsText">Show All 5 Additional Technical Specifications</span>
-                </button>
-              </td>
-            </tr>
           </tbody>
 
           <!-- Collapsible Detailed Technical Breakdown -->
@@ -1676,6 +1667,17 @@ function homeHtml(): string {
               </td>
               <td style="text-align: center; padding: 14px 18px; border-bottom: 1px solid var(--border); color: #fff; font-weight: 600;">1 Machine</td>
               <td style="text-align: center; padding: 14px 18px; border-bottom: 1px solid var(--border); background: rgba(59, 130, 246, 0.04); border-left: 1px solid rgba(59, 130, 246, 0.2); border-right: 1px solid rgba(59, 130, 246, 0.2); color: #60a5fa; font-weight: 700;">2 Workstations</td>
+            </tr>
+          </tbody>
+
+          <!-- Expand / Collapse Toggle Bar -->
+          <tbody>
+            <tr>
+              <td colspan="3" style="text-align: center; padding: 12px 18px; border-bottom: none; background: rgba(255, 255, 255, 0.02);">
+                <button id="btnToggleDetails" type="button" onclick="toggleDetailedSpecs()" style="background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;">
+                  <span id="toggleDetailsIcon">↓</span> <span id="toggleDetailsText">Show More</span>
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1742,9 +1744,9 @@ function homeHtml(): string {
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">Why is there a paid option or a Pro version if it is open source?</div>
+        <div class="faq-question">Why is there a paid option if it is open source?</div>
         <div class="faq-answer">
-          Simple Streamer Core is free and open-source under GPL-2.0. The Pro version helps sustain hosted cloud infrastructure: verified Google and Meta API quotas for automated 1-click broadcast creation, multi-platform title and description synchronization, and secure TURN signaling relays for cellular mobile remote control.
+          Simple Streamer Core is free and open-source under GPL-2.0. The paid option helps sustain hosted cloud infrastructure: verified Google and Meta API quotas for automated 1-click broadcast creation, multi-platform title and description synchronization, and secure TURN signaling relays for cellular mobile remote control.
         </div>
       </div>
     </div>
@@ -1824,11 +1826,11 @@ function homeHtml(): string {
         if (!el) return;
         if (el.style.display === 'none' || el.style.display === '') {
           el.style.display = 'table-row-group';
-          if (text) text.innerText = 'Hide Detailed Technical Specifications';
+          if (text) text.innerText = 'Show Less';
           if (icon) icon.innerText = '↑';
         } else {
           el.style.display = 'none';
-          if (text) text.innerText = 'Show All 5 Additional Technical Specifications';
+          if (text) text.innerText = 'Show More';
           if (icon) icon.innerText = '↓';
         }
       };
