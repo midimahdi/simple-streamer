@@ -1678,23 +1678,6 @@ function homeHtml(): string {
               <td style="text-align: center; padding: 14px 18px; border-bottom: 1px solid var(--border); background: rgba(59, 130, 246, 0.04); border-left: 1px solid rgba(59, 130, 246, 0.2); border-right: 1px solid rgba(59, 130, 246, 0.2); color: #60a5fa; font-weight: 700;">2 Workstations</td>
             </tr>
           </tbody>
-
-          <!-- Table Action Row -->
-          <tbody>
-            <tr>
-              <td style="padding: 16px 18px; border-bottom: none;"></td>
-              <td style="text-align: center; padding: 16px 18px; border-bottom: none;">
-                <a href="https://github.com/midimahdi/simple-streamer/releases/latest" class="btn btn-secondary btn-sm" style="width: 100%;">
-                  Download Free
-                </a>
-              </td>
-              <td style="text-align: center; padding: 16px 18px; background: rgba(59, 130, 246, 0.08); border-left: 1px solid rgba(59, 130, 246, 0.3); border-right: 1px solid rgba(59, 130, 246, 0.3); border-bottom: 2px solid var(--accent); border-radius: 0 0 8px 8px;">
-                <a href="https://buy.stripe.com/8x200jdrw4dF03WgSM5EY01" class="btn btn-primary btn-sm" style="width: 100%;">
-                  ⚡ Get Pro
-                </a>
-              </td>
-            </tr>
-          </tbody>
         </table>
       </div>
 
@@ -1759,9 +1742,9 @@ function homeHtml(): string {
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">Why charge $3 for a lifetime pass if it is open source?</div>
+        <div class="faq-question">Why is there a paid option or a Pro version if it is open source?</div>
         <div class="faq-answer">
-          Simple Streamer Core is free and open-source under GPL-2.0. The \$3 founding pass helps sustain hosted infrastructure: verified Google and Meta API quotas for broadcast creation, automated multi-platform title and description sync, and TURN signaling relays for cellular mobile remotes.
+          Simple Streamer Core is free and open-source under GPL-2.0. The Pro version helps sustain hosted cloud infrastructure: verified Google and Meta API quotas for automated 1-click broadcast creation, multi-platform title and description synchronization, and secure TURN signaling relays for cellular mobile remote control.
         </div>
       </div>
     </div>
