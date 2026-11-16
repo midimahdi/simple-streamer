@@ -8,7 +8,7 @@ PublisherSupportUrl: https://github.com/midimahdi/simple-streamer/issues
 Author: MAHDI DIGITAL LLC
 Moniker: simple-streamer
 PackageUrl: https://simple-streamer.bdjlmn.com
-License: MIT
+License: GPL-2.0-only
 LicenseUrl: https://github.com/midimahdi/simple-streamer/blob/main/LICENSE
 Copyright: Copyright (c) 2026 MAHDI DIGITAL LLC
 ShortDescription: One-click multi-platform live streaming appliance embedded natively inside OBS Studio.

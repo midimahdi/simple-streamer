@@ -9,7 +9,7 @@
 [![Downloads](https://img.shields.io/github/downloads/midimahdi/simple-streamer/total?color=blue&label=Downloads)](https://github.com/midimahdi/simple-streamer/releases)
 [![Platforms](https://img.shields.io/badge/Platform-Windows%2010%2F11%20%7C%20macOS-0284c7)](https://github.com/midimahdi/simple-streamer/releases/latest)
 [![OBS Studio](https://img.shields.io/badge/OBS%20Studio-%E2%89%A5%2028.0-9333ea)](https://obsproject.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL-2.0](https://img.shields.io/badge/License-GPL--2.0-blue.svg)](LICENSE)
 
 <br/>
 
@@ -90,11 +90,11 @@ Simple Streamer runs right inside OBS Studio to give you a clean, smooth broadca
 
 | Feature | Simple Streamer | Other OBS Multi-RTMP Plugins | Paid Cloud Websites (Restream, Castr) |
 | :--- | :--- | :--- | :--- |
-| **Cost** | **Freemium (Free / \$5 Lifetime)** | Free | \$228 to \$588 every year |
+| **Cost** | **Free / Pro Plan** | Free | \$228 to \$588 every year |
 | **Extra Computer Work (CPU/GPU)** | **0% (Uses existing encoder)** | High (Encodes video multiple times) | None (Handled on remote servers) |
 | **Stream Delay (Lag)** | **0 seconds (Direct)** | 0 seconds (Direct) | 2 to 5 seconds extra cloud delay |
 | **Stream Key Setup** | **1-Click Automatic Sync** | Manual copy-paste setup | Automatic |
-| **Mobile Phone Remote** | **Free (Wi-Fi + Cellular)** | ❌ None | ❌ Requires separate paid apps |
+| **Mobile Phone Remote** | **LAN + Internet** | ❌ None | ❌ Requires separate paid apps |
 | **Update Title Mid-Stream** | **1-Click Sync to All Platforms** | ❌ None | Web dashboard only |
 | **Data Privacy** | **100% Local on Your PC** | Local on Your PC | Stored on third-party cloud servers |
 
@@ -152,4 +152,4 @@ If you are a developer, systems engineer, or contributor looking for C plugin so
 
 ## 📜 License
 
-Distributed under the **MIT License**. Created with care by [MAHDI DIGITAL LLC](https://bdjlmn.com).
+Distributed under the **GNU General Public License v2.0 (GPL-2.0)**. Created with care by [MAHDI DIGITAL LLC](https://bdjlmn.com).
