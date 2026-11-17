@@ -187,34 +187,58 @@
       position: absolute;
       top: 8px;
       left: 8px;
-      padding: 3px 8px;
+      padding: 4px 10px;
       border-radius: 6px;
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 800;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.04em;
       background: rgba(10, 12, 16, 0.85);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(59, 130, 246, 0.45);
+      color: #93c5fd;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
+      max-width: 82%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.2s ease;
+    }
+
+    .hud-scene-dot {
+      font-size: 8px;
+      line-height: 1;
+      color: var(--accent-blue);
+      flex-shrink: 0;
     }
 
     .hud-badge-left.live {
-      background: rgba(239, 68, 68, 0.9);
+      background: rgba(239, 68, 68, 0.92);
       color: #fff;
-      border-color: rgba(239, 68, 68, 0.5);
+      border-color: rgba(239, 68, 68, 0.7);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+    }
+
+    .hud-badge-left.live .hud-scene-dot {
+      color: #fff;
+      animation: pulseLive 1.5s infinite;
     }
 
     .hud-badge-left.staged {
       background: rgba(245, 158, 11, 0.95);
       color: #000;
-      border-color: rgba(245, 158, 11, 0.8);
+      border-color: rgba(245, 158, 11, 0.9);
       font-weight: 900;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+    }
+
+    .hud-badge-left.staged .hud-scene-dot {
+      color: #000;
     }
 
     .hud-badge-left.external {
-      background: rgba(245, 158, 11, 0.95);
+      background: rgba(245, 158, 11, 0.92);
       color: #000;
       border-color: rgba(245, 158, 11, 0.8);
       font-weight: 900;
@@ -222,22 +246,6 @@
 
     .monitor-container.staged {
       box-shadow: inset 0 0 0 2px var(--accent-amber);
-    }
-
-    .hud-badge-right {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 9px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      background: rgba(10, 12, 16, 0.85);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(59, 130, 246, 0.4);
-      color: #93c5fd;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
 
     /* Integrated Audio Level Bar at Card Base */
@@ -1064,11 +1072,6 @@
       right: 8px;
     }
 
-    [dir="rtl"] .hud-badge-right {
-      right: auto;
-      left: 8px;
-    }
-
     [dir="rtl"] .audio-strip-meta {
       flex-direction: row-reverse;
     }
@@ -1144,10 +1147,10 @@
       </div>
       <img id="videoFrame" class="video-viewport-img" style="display: none;" alt="OBS Live Preview" />
       
-      <div id="videoBadge" class="hud-badge-left">
-        <span>●</span> <span id="badgeStatus" data-i18n="remoteStandby">STANDBY</span>
+      <div id="hudSceneTag" class="hud-badge-left">
+        <span id="hudSceneDot" class="hud-scene-dot">●</span>
+        <span id="hudSceneText">Loading...</span>
       </div>
-      <div id="hudSceneTag" class="hud-badge-right">Scene 2</div>
     </div>
 
     <!-- Integrated Audio VU Strip -->
@@ -1379,6 +1382,8 @@
       videoBadge: document.getElementById('videoBadge'),
       badgeStatus: document.getElementById('badgeStatus'),
       hudSceneTag: document.getElementById('hudSceneTag'),
+      hudSceneDot: document.getElementById('hudSceneDot'),
+      hudSceneText: document.getElementById('hudSceneText'),
       audioStrip: document.getElementById('audioStrip'),
       audioName: document.getElementById('audioName'),
       audioDbReadout: document.getElementById('audioDbReadout'),
@@ -1452,13 +1457,10 @@
       updateMuteButtonUi();
       if (state.isExternalStream) {
         if (el.sliderLabel) el.sliderLabel.textContent = t('remoteExternalLive') || 'OBS STREAMING (EXTERNAL)';
-        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteExternalLive') || 'STREAMING (EXTERNAL)';
       } else if (state.isStreaming) {
         if (el.sliderLabel) el.sliderLabel.textContent = t('slideToStop');
-        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteLive');
       } else {
         if (el.sliderLabel) el.sliderLabel.textContent = t('slideToLive');
-        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteStandby');
       }
       if (state.destinations) {
         renderDestinationsPills(state.destinations);
@@ -1537,6 +1539,7 @@
     }
 
     // --- Rig Registry & Multi-Broadcaster Switcher ---
+    // Keyed by unique machine identity (machineId / hwid) to avoid duplicate entries for same PC
     const discoveredRigs = new Map();
 
     function updateRigSwitcherUI() {
@@ -1544,20 +1547,20 @@
       const allRigs = Array.from(discoveredRigs.values());
       const onlineRigs = allRigs.filter(r => r.obsOnline);
 
-      // Show switcher bar whenever 2+ rigs are discovered on LAN
+      // Show switcher bar only when 2+ UNIQUE physical rigs exist on the LAN
       if (allRigs.length > 1) {
         el.rigSwitcherBar.style.display = 'flex';
         el.rigButtonsWrap.innerHTML = '';
         allRigs.forEach(rig => {
           const btn = document.createElement('button');
-          const isCurrent = (rig.ip === hostIp);
+          const isCurrent = (rig.ip === hostIp || rig.targetHost === hostIp || rig.hostIp === hostIp);
           btn.className = `btn-rig-pill ${isCurrent ? 'active' : ''}`;
           btn.innerHTML = `
             <span class="rig-dot" style="${rig.obsOnline ? 'background: #10b981; box-shadow: 0 0 6px #10b981;' : 'background: #647087;'}"></span>
             <span>${rig.machineName || rig.ip}</span>
             ${isCurrent ? '<span style="font-size: 9px; opacity: 0.85;">(Connected)</span>' : ''}
           `;
-          btn.onclick = () => switchToRig(rig.ip);
+          btn.onclick = () => switchToRig(rig.ip || rig.targetHost);
           el.rigButtonsWrap.appendChild(btn);
         });
       } else {
@@ -1565,7 +1568,7 @@
       }
 
       // Check current rig OBS liveness
-      const currentRig = discoveredRigs.get(hostIp);
+      const currentRig = Array.from(discoveredRigs.values()).find(r => r.ip === hostIp || r.targetHost === hostIp || r.hostIp === hostIp);
       if (currentRig && !currentRig.obsOnline) {
         if (el.obsClosedNotice) {
           el.obsClosedNotice.style.display = 'flex';
@@ -1575,7 +1578,7 @@
           const target = onlineRigs[0];
           el.btnSwitchToActive.style.display = 'inline-block';
           el.btnSwitchToActive.textContent = `Switch to ${target.machineName || target.ip}`;
-          el.btnSwitchToActive.onclick = () => switchToRig(target.ip);
+          el.btnSwitchToActive.onclick = () => switchToRig(target.ip || target.targetHost);
         } else if (el.btnSwitchToActive) {
           el.btnSwitchToActive.style.display = 'none';
         }
@@ -1598,7 +1601,7 @@
       state.isConnected = false;
       setConnStatus(false);
 
-      const rig = discoveredRigs.get(targetHost);
+      const rig = Array.from(discoveredRigs.values()).find(r => r.ip === targetHost || r.targetHost === targetHost || r.hostIp === targetHost);
       if (rig) {
         applyDiscoveredHost(targetHost, rig);
       }
@@ -1619,10 +1622,26 @@
         if (res.ok) {
           const cfg = await res.json();
           if (cfg && cfg.ok) {
-            cfg.ip = targetHost;
+            // Deduplicate by unique machine identity so mDNS (simple-streamer.local)
+            // and direct IP (192.168.1.5) never register the same machine twice!
+            const machineKey = cfg.machineId || cfg.hwid || (cfg.hostIp ? `ip_${cfg.hostIp}` : targetHost);
+            const existing = discoveredRigs.get(machineKey);
+
+            cfg.targetHost = targetHost;
+            cfg.machineKey = machineKey;
+
+            // Keep the IP the phone is actively connected to, or prefer hostIp
+            if (hostIp === targetHost || hostIp === cfg.hostIp) {
+              cfg.ip = hostIp;
+            } else if (existing && (existing.ip === hostIp || existing.targetHost === hostIp)) {
+              cfg.ip = hostIp;
+            } else {
+              cfg.ip = cfg.hostIp || targetHost;
+            }
+
             cfg.machineName = cfg.machineName || targetHost;
             cfg.obsOnline = (cfg.obsOnline !== false);
-            discoveredRigs.set(targetHost, cfg);
+            discoveredRigs.set(machineKey, { ...(existing || {}), ...cfg });
             updateRigSwitcherUI();
             return cfg;
           }
@@ -1646,10 +1665,10 @@
       ]);
 
       // If current host has OBS closed, auto-switch immediately to any discovered online rig
-      const currentRig = discoveredRigs.get(hostIp);
+      const currentRig = Array.from(discoveredRigs.values()).find(r => r.ip === hostIp || r.targetHost === hostIp || r.hostIp === hostIp);
       const onlineRigs = Array.from(discoveredRigs.values()).filter(r => r.obsOnline);
       if ((forceSwitch || !currentRig || !currentRig.obsOnline) && onlineRigs.length > 0) {
-        switchToRig(onlineRigs[0].ip);
+        switchToRig(onlineRigs[0].ip || onlineRigs[0].targetHost);
         autoDiscoveryRunning = false;
         return;
       }
@@ -1672,14 +1691,20 @@
         const candidates = new Set();
         for (let o = 2; o <= 25; o++) candidates.add(`${subnet}.${o}`);
         for (let o = 100; o <= 125; o++) candidates.add(`${subnet}.${o}`);
-        const candidateList = Array.from(candidates).filter(ip => ip !== hostIp && !discoveredRigs.has(ip));
+        const candidateList = Array.from(candidates).filter(ip => {
+          if (ip === hostIp) return false;
+          for (const rig of discoveredRigs.values()) {
+            if (rig.ip === ip || rig.hostIp === ip || rig.targetHost === ip) return false;
+          }
+          return true;
+        });
 
         for (let i = 0; i < candidateList.length; i += 10) {
           const chunk = candidateList.slice(i, i + 10);
           await Promise.all(chunk.map(ip => probeBridge(ip)));
           const active = Array.from(discoveredRigs.values()).filter(r => r.obsOnline);
           if ((forceSwitch || !currentRig || !currentRig.obsOnline) && active.length > 0) {
-            switchToRig(active[0].ip);
+            switchToRig(active[0].ip || active[0].targetHost);
             autoDiscoveryRunning = false;
             return;
           }
@@ -2475,30 +2500,21 @@
 
     function updateSceneUi() {
       if (state.stagedScene) {
-        if (el.videoBadge) {
-          el.videoBadge.className = 'hud-badge-left staged';
-        }
-        if (el.badgeStatus) el.badgeStatus.textContent = t('remoteStaged');
         if (el.hudSceneTag) {
-          el.hudSceneTag.textContent = `${t('remoteStaged')}: ${state.stagedScene}`;
-          el.hudSceneTag.style.background = 'rgba(245, 158, 11, 0.9)';
-          el.hudSceneTag.style.color = '#000';
-          el.hudSceneTag.style.borderColor = 'rgba(245, 158, 11, 0.8)';
+          el.hudSceneTag.className = 'hud-badge-left staged';
+          if (el.hudSceneText) el.hudSceneText.textContent = `${t('remoteStaged')}: ${state.stagedScene}`;
+          else el.hudSceneTag.textContent = `${t('remoteStaged')}: ${state.stagedScene}`;
         }
         if (el.videoPlaceholder) {
           const phSpan = el.videoPlaceholder.querySelector('span');
           if (phSpan) phSpan.textContent = `Loading Preview: ${state.stagedScene}...`;
         }
       } else {
-        if (el.videoBadge) {
-          el.videoBadge.className = state.isStreaming ? 'hud-badge-left live' : 'hud-badge-left';
-        }
-        if (el.badgeStatus) el.badgeStatus.textContent = state.isStreaming ? t('remoteLive') : t('remoteStandby');
         if (el.hudSceneTag) {
-          el.hudSceneTag.textContent = state.currentScene || 'NONE';
-          el.hudSceneTag.style.background = 'rgba(10, 12, 16, 0.85)';
-          el.hudSceneTag.style.color = '#93c5fd';
-          el.hudSceneTag.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+          const isLive = state.isStreaming || state.isExternalStream;
+          el.hudSceneTag.className = isLive ? 'hud-badge-left live' : 'hud-badge-left';
+          if (el.hudSceneText) el.hudSceneText.textContent = state.currentScene || 'NONE';
+          else el.hudSceneTag.textContent = state.currentScene || 'NONE';
         }
         if (el.videoPlaceholder) {
           const phSpan = el.videoPlaceholder.querySelector('span');
@@ -2597,13 +2613,11 @@
 
       el.sliderTrack.classList.remove('disabled');
       if (isLive) {
-        el.videoBadge.className = 'hud-badge-left live';
-        el.badgeStatus.textContent = t('remoteLive');
+        if (el.hudSceneTag && !state.stagedScene) el.hudSceneTag.className = 'hud-badge-left live';
         el.sliderTrack.classList.add('live');
         el.sliderLabel.textContent = t('slideToStop');
       } else {
-        el.videoBadge.className = 'hud-badge-left';
-        el.badgeStatus.textContent = t('remoteStandby');
+        if (el.hudSceneTag && !state.stagedScene) el.hudSceneTag.className = 'hud-badge-left';
         el.sliderTrack.classList.remove('live');
         el.sliderLabel.textContent = t('slideToLive');
       }
@@ -2621,8 +2635,7 @@
 
       if (isExternal) {
         state.isStreaming = false;
-        el.videoBadge.className = 'hud-badge-left external';
-        el.badgeStatus.textContent = t('remoteExternalLive') || 'STREAMING (EXTERNAL)';
+        if (el.hudSceneTag && !state.stagedScene) el.hudSceneTag.className = 'hud-badge-left external';
         el.sliderTrack.classList.remove('live');
         el.sliderTrack.classList.add('disabled');
         el.sliderLabel.textContent = t('remoteExternalLive') || 'OBS STREAMING (EXTERNAL)';
