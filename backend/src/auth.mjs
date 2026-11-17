@@ -5,6 +5,8 @@
  * Validates Supabase JWT sessions and manages hardware device slots (max 2 active devices).
  */
 
+import crypto from 'node:crypto';
+
 export const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uqxlgyhmbhzeyfcgxxji.supabase.co';
 export const SUPABASE_ANON_KEY =
   process.env.SUPABASE_ANON_KEY ||
@@ -20,6 +22,53 @@ export const DEVICE_LIMIT_REACHED_ERROR = {
   error: 'DEVICE_LIMIT_REACHED',
   message: 'Device limit reached (max 2 active devices). Deactivate a machine at https://simple-streamer.bdjlmn.com/account',
 };
+
+let cachedJwks = null;
+let lastJwksFetch = 0;
+
+/**
+ * Fallback verification for desktop sessions: validates Supabase asymmetric ES256 JWT signature.
+ * Prevents desktop broadcast sessions from abruptly expiring after 1 hour when client lacks silent refresh loop.
+ */
+export async function verifySupabaseJwtSignature(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+
+    if (header.alg !== 'ES256') return null;
+    if (!payload.sub) return null;
+
+    const now = Date.now();
+    if (!cachedJwks || now - lastJwksFetch > 86400000) {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`);
+      if (res.ok) {
+        cachedJwks = await res.json();
+        lastJwksFetch = now;
+      }
+    }
+
+    const keyInfo = cachedJwks?.keys?.find((k) => k.kid === header.kid) || cachedJwks?.keys?.[0];
+    if (!keyInfo) return null;
+
+    const pubKey = crypto.createPublicKey({ key: keyInfo, format: 'jwk' });
+    const data = Buffer.from(`${parts[0]}.${parts[1]}`);
+    const sigRaw = Buffer.from(parts[2], 'base64url');
+
+    const isValid = crypto.verify('sha256', data, { key: pubKey, dsaEncoding: 'ieee-p1363' }, sigRaw);
+    if (!isValid) return null;
+
+    return {
+      id: payload.sub,
+      email: payload.email || '',
+      is_desktop_cached_jwt: true,
+    };
+  } catch (err) {
+    console.warn('[verifySupabaseJwtSignature] Error:', err.message);
+    return null;
+  }
+}
 
 /**
  * Checks if a subscription status qualifies as Pro / Founding 100 entitlement.
@@ -136,6 +185,15 @@ export async function verifySession(authHeader) {
       } catch {
         // Fallback for non-JSON responses
       }
+
+      // If token expired, verify cryptographic signature and accept desktop broadcaster session
+      if (errorMsg.includes('expired') || errorMsg.includes('invalid claims')) {
+        const fallbackUser = await verifySupabaseJwtSignature(token);
+        if (fallbackUser) {
+          return { user: fallbackUser, error: null };
+        }
+      }
+
       return { user: null, error: errorMsg };
     }
 

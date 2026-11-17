@@ -1424,6 +1424,15 @@ function accountHtml(): string {
             tokenInput.value = session.access_token;
           }
 
+          // Automatically sync license token to local desktop OBS bridge if running on broadcaster's PC
+          if (session && session.access_token) {
+            fetch('http://127.0.0.1:45455/save-auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: session.access_token }),
+            }).catch(function() {});
+          }
+
           window.copyDockToken = function() {
             if (session && session.access_token) {
               navigator.clipboard.writeText(session.access_token).then(function() {
