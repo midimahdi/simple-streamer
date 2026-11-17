@@ -200,8 +200,10 @@ $OldVbs = "$BridgeDir\bridge.vbs"
 if (Test-Path $OldVbs) { Remove-Item $OldVbs -Force -ErrorAction SilentlyContinue }
 try {
     Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Force -ErrorAction SilentlyContinue
     $sDir = [Environment]::GetFolderPath('Startup')
     Get-ChildItem -Path $sDir -Filter "*bridge*.vbs" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $sDir -Filter "*SimpleStreamerBridge*.vbs" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 } catch {}
 
 # Configure Windows Firewall and URL ACL for Mobile Remote Control
@@ -939,7 +941,26 @@ $Shortcut.Save()
 
 # Launch bridge directly right now (invisible)
 Start-Process "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$BridgePsFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
-Write-Host "    [OK] Background bridge installed and running on port 45455." -ForegroundColor Green
+
+# Verify bridge liveness before finishing setup
+$bridgeOnline = $false
+for ($i = 0; $i -lt 10; $i++) {
+    Start-Sleep -Milliseconds 300
+    try {
+        $testRes = Invoke-RestMethod -Uri "http://127.0.0.1:45455/obs-config" -TimeoutSec 1 -ErrorAction Stop
+        if ($testRes) {
+            $bridgeOnline = $true
+            break
+        }
+    } catch {}
+}
+
+if ($bridgeOnline) {
+    Write-Host "    [OK] Background bridge running and responding on port 45455." -ForegroundColor Green
+} else {
+    Write-Host "    [!] Retrying background bridge launch..." -ForegroundColor Yellow
+    Start-Process "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$BridgePsFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
+}
 Write-Host "    [OK] Non-destructive stream settings preservation active." -ForegroundColor Green
 
 Write-Host ""
