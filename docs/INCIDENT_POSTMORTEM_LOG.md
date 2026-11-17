@@ -285,3 +285,33 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
 
 
 
+
+## 15. OBS 29 Native Module Compatibility & Windows Bridge Boot Failure
+
+### What Happened
+- During live test broadcasting on the Mosque PC (Windows 10, running OBS Studio 29.1.3), YouTube streamed successfully (as Primary Destination 0), but Facebook Live (Secondary Destination 1) did not stream.
+- In the OBS dock, the Facebook card initially showed "LIVE" (or "STARTING..."), then transitioned to "PLUGIN NOT RUNNING".
+- On PC boot, Windows displayed an error popup: `Windows Script Host: Impossible de trouver le fichier script '...\SimpleStreamer\bridge.vbs'`.
+
+### Root Causes
+1. **libobs Module API Version Header Incompatibility**:
+   - The native C plugin had initially been compiled against OBS 30 headers with `LIBOBS_API_MAJOR_VER 30` (or `33`), causing OBS 29.1.3 to reject `simple-streamer.dll` at module load time (`MODULE_INCOMPATIBLE_VER`).
+2. **Broken Bridge Boot Lifecycle Caused Disarmed Secondary Outputs**:
+   - An obsolete registry startup entry (`HKCU:\...\Run\SimpleStreamerBridge`) attempted to run `bridge.vbs`, which had been deleted during migration to PowerShell background execution.
+   - Because the script failed to launch, `bridge.ps1` was never started on port `45455`.
+   - When the operator started the stream from the dock, the call to `http://127.0.0.1:45455/save-destinations` failed to reach the bridge.
+   - Consequently, `config.json` was never written with Facebook's dynamic RTMP credentials and remained `armed: false`.
+   - When OBS started streaming, `simple-streamer.dll` checked `config.json`, saw `armed == false`, and logged:
+     `[SimpleStreamer] Stream started independently (OBS button/other). Secondary outputs not armed (skipping).`
+3. **Session Platform Credential Loss in Teardown**:
+   - In `dock/app.js`, `activeBroadcast.destinations` was not carrying forward raw `accessToken` and `refreshToken` objects, causing the `/end-live` cloud orchestrator endpoint to fail Facebook live video closure with `"Cannot parse access token"`.
+
+### Permanent Patches Implemented
+1. **OBS 29 Native SDK Compilation**:
+   - Pinned `LIBOBS_API_MAJOR_VER 29` in `plugin/include/libobs/obs-config.h` and compiled MSVC `/MT` 64-bit binaries against the OBS 29.1.3 SDK. OBS 29 and OBS 30+ load the module seamlessly.
+   - Published standalone `simple-streamer.dll` to GitHub Releases (`latest`) with fallback archive extraction in `install.ps1`.
+2. **Native Windows Startup Shortcut Migration**:
+   - Cleaned up obsolete VBS registry keys from `HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`.
+   - Created a native `.lnk` shortcut targeting `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$env:LOCALAPPDATA\SimpleStreamer\bridge.ps1"` in `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SimpleStreamerBridge.lnk`.
+3. **Credential Preservation for Safe Teardown**:
+   - Merged original credential objects into `activeBroadcast.destinations` before OBS stream kickoff in `dock/app.js`, guaranteeing clean multi-platform teardown on broadcast completion.
