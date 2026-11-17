@@ -4989,8 +4989,8 @@ function initEvents() {
       .catch(() => {});
   }, 1500);
 
-  // Heartbeat local rig presence to cloud orchestrator (Disabled by default; enable if cloud routing needed)
-  const ENABLE_PRESENCE_HEARTBEAT = false;
+  // Heartbeat local rig presence to cloud orchestrator for seamless mobile remote discovery
+  const ENABLE_PRESENCE_HEARTBEAT = true;
   async function heartbeatPresence() {
     if (!ENABLE_PRESENCE_HEARTBEAT) return;
     try {
@@ -5005,6 +5005,8 @@ function initEvents() {
             lanIp: cfg.hostIp,
             bridgePort: cfg.bridgePort || 45455,
             obsPort: cfg.obsPort || 4455,
+            sessionPin: state.sessionPin || '',
+            machineName: cfg.machineName || 'OBS Workstation',
           }),
         });
       }

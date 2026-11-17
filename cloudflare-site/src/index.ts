@@ -164,6 +164,8 @@ export default {
     let targetPath = url.pathname + url.search;
     if (pathname === '/dock' || pathname === '/app') {
       targetPath = '/index.html' + (url.search ? url.search : '');
+    } else if (pathname === '/remote') {
+      targetPath = '/remote.html' + (url.search ? url.search : '');
     }
     const targetUrl = new URL(targetPath, CLOUD_RUN_ORIGIN);
     const proxyHeaders = new Headers(request.headers);

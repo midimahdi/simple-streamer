@@ -146,7 +146,7 @@ const pendingKickPkce = new Map();
 
 // In-memory active presence of running Simple Streamer desktop rigs (updated via dock heartbeats)
 // Set ENABLE_PRESENCE_REDIRECT to true if dynamic cloud-level 302 routing is desired.
-const ENABLE_PRESENCE_REDIRECT = false;
+const ENABLE_PRESENCE_REDIRECT = true;
 let activePresence = null;
 
 // Periodic cleanup of expired OAuth sessions (TTL: 5 minutes)
@@ -1667,6 +1667,7 @@ function renderAuthErrorHtml(title, message) {
         lanIp: body.lanIp,
         bridgePort: body.bridgePort || 45455,
         obsPort: body.obsPort || 4455,
+        sessionPin: body.sessionPin || '',
         machineName: body.machineName || 'OBS Rig',
         updatedAt: Date.now(),
       };
@@ -1690,7 +1691,15 @@ function renderAuthErrorHtml(title, message) {
   if (ENABLE_PRESENCE_REDIRECT && (req.method === 'GET' || req.method === 'HEAD') && (pathname === '/remote' || pathname === '/remote.html')) {
     const isRecent = activePresence && (Date.now() - activePresence.updatedAt < 90000);
     if (isRecent) {
-      const redirectTarget = `http://${activePresence.lanIp}:${activePresence.bridgePort}/remote`;
+      const searchParams = new URLSearchParams(url.search);
+      if (!searchParams.get('pin') && activePresence.sessionPin) {
+        searchParams.set('pin', activePresence.sessionPin);
+      }
+      if (!searchParams.get('port') && activePresence.obsPort) {
+        searchParams.set('port', activePresence.obsPort);
+      }
+      const qs = searchParams.toString();
+      const redirectTarget = `http://${activePresence.lanIp}:${activePresence.bridgePort}/remote` + (qs ? `?${qs}` : '');
       setCorsHeaders(res);
       res.writeHead(302, {
         Location: redirectTarget,
@@ -1703,7 +1712,10 @@ function renderAuthErrorHtml(title, message) {
   // Serve static OBS Browser Dock files
   if (req.method === 'GET' || req.method === 'HEAD') {
     const safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
-    const targetFile = safePath === '/' ? 'index.html' : safePath.replace(/^\//, '');
+    let targetFile = safePath === '/' ? 'index.html' : safePath.replace(/^\//, '');
+    if (targetFile === 'remote' || targetFile === 'remote/') {
+      targetFile = 'remote.html';
+    }
     const fullPath = path.join(DOCK_DIR, targetFile);
 
     if (fullPath.startsWith(DOCK_DIR) && fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
