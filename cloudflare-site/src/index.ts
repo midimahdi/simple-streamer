@@ -307,6 +307,26 @@ ${JSON.stringify(SCHEMA_JSON_LD, null, 2)}
     .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 32px; margin-bottom: 32px; }
     .card-highlight { border-left: 4px solid var(--accent); }
     .badge { display: inline-block; background: #1e293b; color: #93c5fd; border: 1px solid #3b82f6; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+    .platform-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #161c28;
+      border: 1px solid #334155;
+      padding: 3px 11px;
+      border-radius: 8px;
+      vertical-align: middle;
+      color: #fff;
+      font-size: 0.72em;
+      font-weight: 700;
+      white-space: nowrap;
+      margin: 3px 2px;
+      line-height: 1.4;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+    .platform-badge svg {
+      flex-shrink: 0;
+    }
     footer { border-top: 1px solid var(--border); padding-top: 32px; margin-top: 60px; font-size: 14px; color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
     footer a { color: var(--muted); text-decoration: none; }
     footer a:hover { color: #fff; }
@@ -1674,11 +1694,28 @@ function homeHtml(): string {
     'Simple Streamer — Free Multi-Stream Plugin & Remote Dock for OBS Studio',
     `<div style="text-align: center; margin-bottom: 24px;">
       <div class="badge">OPEN SOURCE</div>
-      <h1 style="font-size: 40px; margin-bottom: 18px; line-height: 1.2;">
+      <h1 style="font-size: 40px; margin-bottom: 18px; line-height: 1.45;">
         Set Your Title & Description Once.
         <br>
-        Stream to YouTube, Facebook, Twitch & Kick from 
-        <span style="display: inline-flex; align-items: center; gap: 7px; background: #161c28; border: 1px solid #334155; padding: 2px 12px; border-radius: 8px; vertical-align: middle; color: #fff;">
+        Stream to 
+        <span class="platform-badge" title="YouTube">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#ff0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          YouTube
+        </span>, 
+        <span class="platform-badge" title="Facebook Live">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          Facebook
+        </span>, 
+        <span class="platform-badge" title="Twitch">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#9146ff"><path d="M2.149 0l-1.612 4.119v16.8h5.9v3.081h3.081l3.08-3.081h4.632l6.219-6.219V0H2.149zm19.231 13.638l-3.693 3.693h-5.228l-3.081 3.081v-3.081H4.632V2.149h16.748v11.489zm-4.632-6.529h-2.149v5.901h2.149V7.109zm-5.9 0H8.699v5.901h2.149V7.109z"/></svg>
+          Twitch
+        </span> &amp; 
+        <span class="platform-badge" title="Kick">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#53fc18"><path d="M1.333 0h7.62v7.619h3.809V3.81h3.81V0h7.618v11.429h-3.81v3.809h3.81V24h-7.619v-3.81h-3.81v-3.809H8.952V24H1.333V0z"/></svg>
+          Kick
+        </span> 
+        from 
+        <span class="platform-badge" title="OBS Studio">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12,24C5.383,24,0,18.617,0,12S5.383,0,12,0s12,5.383,12,12S18.617,24,12,24z M12,1.109 C5.995,1.109,1.11,5.995,1.11,12C1.11,18.005,5.995,22.89,12,22.89S22.89,18.005,22.89,12C22.89,5.995,18.005,1.109,12,1.109z M6.182,5.99c0.352-1.698,1.503-3.229,3.05-3.996c-0.269,0.273-0.595,0.483-0.844,0.78c-1.02,1.1-1.48,2.692-1.199,4.156 c0.355,2.235,2.455,4.06,4.732,4.028c1.765,0.079,3.485-0.937,4.348-2.468c1.848,0.063,3.645,1.017,4.7,2.548 c0.54,0.799,0.962,1.736,0.991,2.711c-0.342-1.295-1.202-2.446-2.375-3.095c-1.135-0.639-2.529-0.802-3.772-0.425 c-1.56,0.448-2.849,1.723-3.293,3.293c-0.377,1.25-0.216,2.628,0.377,3.772c-0.825,1.429-2.315,2.449-3.932,2.756 c-1.244,0.261-2.551,0.059-3.709-0.464c1.036,0.302,2.161,0.355,3.191-0.011c1.381-0.457,2.522-1.567,3.024-2.935 c0.556-1.49,0.345-3.261-0.591-4.54c-0.7-1.007-1.803-1.717-3.002-1.969c-0.38-0.068-0.764-0.098-1.148-0.134 c-0.611-1.231-0.834-2.66-0.528-3.996L6.182,5.99z"/>
           </svg>
