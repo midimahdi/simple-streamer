@@ -374,27 +374,44 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
 
-    /* Staging Confirmation Banner (Pops up when a scene is staged) */
+    /* Staging Confirmation Bar (Stable fixed-height bar below scene tiles) */
     .staging-confirm-box {
-      display: none;
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.4);
+      display: flex;
+      min-height: 42px;
+      height: 42px;
+      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-sm);
-      padding: 8px 12px;
+      padding: 6px 12px;
       align-items: center;
       justify-content: space-between;
-      animation: slideIn 0.18s ease-out;
+      transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
     }
 
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
+    .staging-confirm-box.active {
+      background: rgba(245, 158, 11, 0.14);
+      border-color: rgba(245, 158, 11, 0.45);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+    }
+
+    .staging-idle-hint {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .staging-text {
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--accent-amber);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 55%;
     }
 
     .staging-actions {
@@ -407,7 +424,7 @@
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.15);
       color: var(--text-dim);
-      padding: 4px 8px;
+      padding: 5px 9px;
       border-radius: 5px;
       font-size: 10px;
       font-weight: 700;
@@ -418,7 +435,7 @@
       background: var(--accent-red);
       border: none;
       color: #fff;
-      padding: 5px 12px;
+      padding: 6px 14px;
       border-radius: 5px;
       font-size: 11px;
       font-weight: 800;
@@ -426,8 +443,9 @@
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+      gap: 5px;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.45);
+      transition: transform 0.1s ease;
     }
 
     .btn-stage-cut:active {
@@ -1165,22 +1183,25 @@
       <span id="directorCurrentTag" class="card-header-status">LIVE: Scene 2</span>
     </div>
 
-    <!-- Staging Confirmation Bar (Pops up when user taps a scene) -->
-    <div id="stagingConfirmBox" class="staging-confirm-box">
-      <span id="stagingText" class="staging-text">Stage: Camera Only</span>
-      <div class="staging-actions">
-        <button id="btnCancelStage" class="btn-stage-cancel" data-i18n="btnCancel">Cancel</button>
-        <button id="btnConfirmCut" class="btn-stage-cut">
-          <span>●</span> <span data-i18n="btnCutLive">CUT LIVE ❯</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Scene Selector Tiles -->
+    <!-- Scene Selector Tiles (Permanently anchored above staging bar) -->
     <div id="sceneGrid" class="scene-grid">
       <div class="scene-tile" style="opacity: 0.5;">
         <span class="scene-tile-name">Loading...</span>
         <span class="scene-tile-sub">OBS Scenes</span>
+      </div>
+    </div>
+
+    <!-- Staging Confirmation Bar (Stable fixed-height bar below tiles) -->
+    <div id="stagingConfirmBox" class="staging-confirm-box">
+      <span id="stagingIdleHint" class="staging-idle-hint">
+        <span style="color: var(--accent-green); font-size: 8px;">●</span> <span data-i18n="tapSceneHint">Tap any scene to preview</span>
+      </span>
+      <span id="stagingText" class="staging-text" style="display: none;">Stage: Camera Only</span>
+      <div id="stagingActions" class="staging-actions" style="display: none;">
+        <button id="btnCancelStage" class="btn-stage-cancel" data-i18n="btnCancel">Cancel</button>
+        <button id="btnConfirmCut" class="btn-stage-cut">
+          <span>●</span> <span data-i18n="btnCutLive">CUT LIVE ❯</span>
+        </button>
       </div>
     </div>
   </div>
@@ -1329,6 +1350,9 @@
       currentScene: '',
       stagedScene: null,
       stageTimer: null,
+      isTransitioning: false,
+      lastCutTime: 0,
+      lastCutPreviousScene: null,
       scenes: [],
       destinations: [],
       audioInputName: null,
@@ -1365,7 +1389,9 @@
       micMuteLabel: document.getElementById('micMuteLabel'),
       directorCurrentTag: document.getElementById('directorCurrentTag'),
       stagingConfirmBox: document.getElementById('stagingConfirmBox'),
+      stagingIdleHint: document.getElementById('stagingIdleHint'),
       stagingText: document.getElementById('stagingText'),
+      stagingActions: document.getElementById('stagingActions'),
       btnCancelStage: document.getElementById('btnCancelStage'),
       btnConfirmCut: document.getElementById('btnConfirmCut'),
       sceneGrid: document.getElementById('sceneGrid'),
@@ -1871,20 +1897,39 @@
         if (state.stagedScene === newScene) {
           state.stagedScene = null;
           if (state.stageTimer) clearTimeout(state.stageTimer);
-          if (el.stagingConfirmBox) el.stagingConfirmBox.style.display = 'none';
+          if (el.stagingIdleHint) el.stagingIdleHint.style.display = 'flex';
+          if (el.stagingText) el.stagingText.style.display = 'none';
+          if (el.stagingActions) el.stagingActions.style.display = 'none';
+          if (el.stagingConfirmBox) el.stagingConfirmBox.classList.remove('active');
         }
         updateSceneUi();
         fetchPreviewFrame();
       } else if (d.eventType === 'CurrentPreviewSceneChanged') {
         const prevScene = d.eventData.sceneName || d.eventData.currentPreviewSceneName;
+        // Never auto-stage if transitioning, if preview matches live scene,
+        // or if it matches the previous scene that was just cut (OBS swap artifact)
+        if (state.isTransitioning || prevScene === state.currentScene) {
+          if (state.stagedScene === prevScene || state.stagedScene === state.currentScene) {
+            cancelStaging();
+          }
+          return;
+        }
+        if (state.lastCutPreviousScene && prevScene === state.lastCutPreviousScene && (Date.now() - state.lastCutTime < 2500)) {
+          return;
+        }
         if (prevScene && prevScene !== state.currentScene && prevScene !== state.stagedScene) {
           state.stagedScene = prevScene;
-          if (el.stagingText) el.stagingText.textContent = t('stagePrefix', { name: prevScene });
-          if (el.stagingConfirmBox) el.stagingConfirmBox.style.display = 'flex';
+          if (el.stagingIdleHint) el.stagingIdleHint.style.display = 'none';
+          if (el.stagingText) {
+            el.stagingText.textContent = t('stagePrefix', { name: prevScene });
+            el.stagingText.style.display = 'block';
+          }
+          if (el.stagingActions) el.stagingActions.style.display = 'flex';
+          if (el.stagingConfirmBox) el.stagingConfirmBox.classList.add('active');
           updateSceneUi();
           fetchPreviewFrame(prevScene);
           if (state.stageTimer) clearTimeout(state.stageTimer);
-          state.stageTimer = setTimeout(cancelStaging, 10000);
+          state.stageTimer = setTimeout(cancelStaging, 15000);
         }
       } else if (d.eventType === 'InputVolumeMeters') {
         handleVolumeMeters(d.eventData.inputs || []);
@@ -2268,51 +2313,79 @@
 
     function renderSceneTiles() {
       if (!el.sceneGrid) return;
-      el.sceneGrid.innerHTML = '';
       if (!state.scenes || state.scenes.length === 0) {
         el.sceneGrid.innerHTML = `<div class="scene-tile"><span class="scene-tile-name">${t('noScenes')}</span></div>`;
         return;
       }
 
-      state.scenes.forEach(s => {
-        const name = s.sceneName;
+      const existingTiles = Array.from(el.sceneGrid.querySelectorAll('.scene-tile[data-scene]'));
+      const sceneNames = state.scenes.map(s => s.sceneName);
+      const existingNames = existingTiles.map(t => t.dataset.scene);
+
+      const isSameList = sceneNames.length === existingNames.length &&
+        sceneNames.every((name, i) => name === existingNames[i]);
+
+      if (!isSameList) {
+        el.sceneGrid.innerHTML = '';
+        state.scenes.forEach(s => {
+          const name = s.sceneName;
+          const tile = document.createElement('div');
+          tile.className = 'scene-tile';
+          tile.dataset.scene = name;
+          tile.innerHTML = `
+            <span class="scene-tile-name">${name}</span>
+            <span class="scene-tile-sub"></span>
+          `;
+          tile.onclick = () => onSceneTileClick(name, tile);
+          el.sceneGrid.appendChild(tile);
+        });
+      }
+
+      // Update tiles in place: zero DOM teardown, zero layout shift or scroll jump
+      const tiles = el.sceneGrid.querySelectorAll('.scene-tile[data-scene]');
+      tiles.forEach(tile => {
+        const name = tile.dataset.scene;
         const isLive = (name === state.currentScene);
         const isStaged = (name === state.stagedScene);
 
-        const tile = document.createElement('div');
         tile.className = 'scene-tile' + (isLive ? ' live-active' : '') + (isStaged ? ' staged' : '');
-        tile.dataset.scene = name;
-
-        const subText = isLive ? t('onAir') : (isStaged ? t('queued') : t('tapToStage'));
-        tile.innerHTML = `
-          <span class="scene-tile-name">${name}</span>
-          <span class="scene-tile-sub">${subText}</span>
-        `;
-
-        tile.onclick = () => {
-          if (name === state.currentScene) {
-            triggerFeedback(tile, 'tap');
-            cancelStaging();
-            return;
-          }
-          if (state.stagedScene === name) {
-            // Second tap on already staged scene acts as instant CUT confirmation!
-            executeSceneCut(name, tile);
-          } else {
-            // Stage scene for safety confirmation
-            stageSceneForCut(name, tile);
-          }
-        };
-
-        el.sceneGrid.appendChild(tile);
+        const nameEl = tile.querySelector('.scene-tile-name');
+        const subEl = tile.querySelector('.scene-tile-sub');
+        if (nameEl && nameEl.textContent !== name) nameEl.textContent = name;
+        if (subEl) {
+          const subText = isLive ? t('onAir') : (isStaged ? t('tapToCut') : t('tapToStage'));
+          if (subEl.textContent !== subText) subEl.textContent = subText;
+        }
       });
+    }
+
+    function onSceneTileClick(name, tile) {
+      if (name === state.currentScene) {
+        triggerFeedback(tile, 'tap');
+        cancelStaging();
+        return;
+      }
+      if (state.stagedScene === name) {
+        // Second tap on already staged scene acts as instant CUT confirmation!
+        executeSceneCut(name, tile);
+      } else {
+        // Stage scene for safety confirmation
+        stageSceneForCut(name, tile);
+      }
     }
 
     async function stageSceneForCut(sceneName, tile) {
       triggerFeedback(tile || el.stagingConfirmBox, 'stage');
       state.stagedScene = sceneName;
-      el.stagingText.textContent = t('stagePrefix', { name: sceneName });
-      el.stagingConfirmBox.style.display = 'flex';
+
+      // Update staging bar smoothly with NO height change
+      if (el.stagingIdleHint) el.stagingIdleHint.style.display = 'none';
+      if (el.stagingText) {
+        el.stagingText.textContent = t('stagePrefix', { name: sceneName });
+        el.stagingText.style.display = 'block';
+      }
+      if (el.stagingActions) el.stagingActions.style.display = 'flex';
+      if (el.stagingConfirmBox) el.stagingConfirmBox.classList.add('active');
 
       // 1. Tell OBS Studio to stage scene in Preview (left side in Studio Mode)
       try {
@@ -2323,9 +2396,9 @@
       updateSceneUi();
       fetchPreviewFrame(sceneName);
 
-      // Auto cancel staging after 10 seconds of inactivity
+      // Auto cancel staging after 15 seconds of inactivity
       if (state.stageTimer) clearTimeout(state.stageTimer);
-      state.stageTimer = setTimeout(cancelStaging, 10000);
+      state.stageTimer = setTimeout(cancelStaging, 15000);
     }
 
     async function cancelStaging() {
@@ -2334,7 +2407,13 @@
         clearTimeout(state.stageTimer);
         state.stageTimer = null;
       }
-      el.stagingConfirmBox.style.display = 'none';
+
+      // Revert staging bar to idle with NO height change
+      if (el.stagingIdleHint) el.stagingIdleHint.style.display = 'flex';
+      if (el.stagingText) el.stagingText.style.display = 'none';
+      if (el.stagingActions) el.stagingActions.style.display = 'none';
+      if (el.stagingConfirmBox) el.stagingConfirmBox.classList.remove('active');
+
       updateSceneUi();
       // Restore OBS preview scene back to current program scene if in studio mode
       if (state.currentScene) {
@@ -2345,15 +2424,23 @@
 
     async function executeSceneCut(sceneName, triggerEl) {
       triggerFeedback(triggerEl || el.btnConfirmCut, 'success');
+      state.lastCutPreviousScene = state.currentScene;
+      state.lastCutTime = Date.now();
+      state.isTransitioning = true;
       state.stagedScene = null;
       if (state.stageTimer) {
         clearTimeout(state.stageTimer);
         state.stageTimer = null;
       }
-      el.stagingConfirmBox.style.display = 'none';
+
+      // Revert staging bar to idle immediately with NO height change
+      if (el.stagingIdleHint) el.stagingIdleHint.style.display = 'flex';
+      if (el.stagingText) el.stagingText.style.display = 'none';
+      if (el.stagingActions) el.stagingActions.style.display = 'none';
+      if (el.stagingConfirmBox) el.stagingConfirmBox.classList.remove('active');
 
       try {
-        // Trigger Studio Mode Transition (Cut / Fade) if in studio mode, with fallback
+        // 1. Trigger Studio Mode Transition (Cut / Fade)
         try {
           await callWs('TriggerStudioModeTransition');
         } catch (_) {
@@ -2361,11 +2448,19 @@
         }
         await callWs('SetCurrentProgramScene', { sceneName }).catch(() => {});
 
+        // 2. KEEP PREVIEW ON THE SAME LIVE SCENE!
+        // Prevent OBS Studio Mode from reverting Preview back to the previous scene
+        await callWs('SetCurrentPreviewScene', { sceneName }).catch(() => {});
+
         state.currentScene = sceneName;
         updateSceneUi();
         fetchPreviewFrame(sceneName);
       } catch (err) {
         alert('Could not switch scene: ' + err.message);
+      } finally {
+        setTimeout(() => {
+          state.isTransitioning = false;
+        }, 1200);
       }
     }
 
@@ -2411,6 +2506,10 @@
         }
       }
       if (el.directorCurrentTag) el.directorCurrentTag.textContent = `${t('directorLivePrefix')} ${state.currentScene || 'NONE'}`;
+      if (!state.stagedScene && el.stagingIdleHint) {
+        const hintSpan = el.stagingIdleHint.querySelector('span:last-child');
+        if (hintSpan) hintSpan.textContent = t('tapSceneHint');
+      }
       renderSceneTiles();
     }
 

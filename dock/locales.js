@@ -194,6 +194,8 @@ export const I18N = {
     onAir: '● ON AIR',
     queued: 'QUEUED',
     tapToStage: 'Tap to Stage',
+    tapToCut: '● TAP TO CUT',
+    tapSceneHint: 'Tap any scene to preview',
     noScenes: 'No Scenes',
 
     // Custom RTMP & Mid-Stream Live Update
@@ -401,6 +403,8 @@ export const I18N = {
     onAir: '● على الهواء',
     queued: 'جاهز',
     tapToStage: 'اضغط للتجهيز',
+    tapToCut: '● اضغط للتبديل',
+    tapSceneHint: 'اضغط على أي مشهد للمعاينة',
     noScenes: 'لا توجد مشاهد',
 
     // Custom RTMP & Mid-Stream Live Update
