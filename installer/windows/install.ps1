@@ -198,6 +198,11 @@ try {
 # Clean up legacy VBS launcher if present
 $OldVbs = "$BridgeDir\bridge.vbs"
 if (Test-Path $OldVbs) { Remove-Item $OldVbs -Force -ErrorAction SilentlyContinue }
+try {
+    Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "SimpleStreamerBridge" -Force -ErrorAction SilentlyContinue
+    $sDir = [Environment]::GetFolderPath('Startup')
+    Get-ChildItem -Path $sDir -Filter "*bridge*.vbs" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+} catch {}
 
 # Configure Windows Firewall and URL ACL for Mobile Remote Control
 Write-Host "    Configuring Windows Firewall for Mobile Remote..." -ForegroundColor Cyan
