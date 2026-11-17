@@ -3666,8 +3666,13 @@ async function handleGoLive() {
     description,
     destinations: returnedDests.map((d) => {
       const original = enabledTargets.find((t) => t.id === d.id);
+      const creds = { ...(original?.credentials || {}), ...(original || {}) };
       return {
+        ...creds,
         ...d,
+        accessToken: creds.accessToken || creds.fbToken || d.accessToken,
+        refreshToken: creds.refreshToken || creds.ytRefreshToken || d.refreshToken,
+        pageId: creds.pageId || d.pageId,
         name: d.name || original?.name || d.platform.toUpperCase(),
         isLive: false,
         status: d.ok ? 'starting' : 'failed',
@@ -3768,14 +3773,19 @@ function setLiveUI(isLive) {
       state.activeBroadcast = {
         title: state.activeBroadcast?.title || 'Live Stream',
         description: state.activeBroadcast?.description || '',
-        destinations: enabled.map((d) => ({
-          id: d.id,
-          platform: d.platform,
-          name: d.name || d.platform.toUpperCase(),
-          isLive: false,
-          status: 'starting',
-          errorMessage: null,
-        })),
+        destinations: enabled.map((d) => {
+          const creds = { ...(d.credentials || {}), ...d };
+          return {
+            ...creds,
+            ...d,
+            accessToken: creds.accessToken || creds.fbToken,
+            refreshToken: creds.refreshToken || creds.ytRefreshToken,
+            name: d.name || d.platform.toUpperCase(),
+            isLive: false,
+            status: 'starting',
+            errorMessage: null,
+          };
+        }),
       };
     }
 
@@ -4108,11 +4118,21 @@ function startMetricsPolling() {
             secDest.isLive = true;
           }
         } else if (stats.outputActive) {
-          // The C native plugin starts and streams secondary outputs whenever the main OBS stream is active.
-          // Because OBS-WebSocket does not track dynamically created C-plugin outputs via GetOutputStatus,
-          // secondary outputs inherit the active streaming state from the main OBS stream.
+          const elapsed = Date.now() - (state.streamStartTime || Date.now());
           if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete' || secDest.cloudStatus === 'error') {
             updateCardBadge(secDest.id, 'offline', 'ENDED');
+            secDest.isLive = false;
+          } else if (secDest.cloudStatus === 'UNPUBLISHED' && elapsed > 15000) {
+            updateCardBadge(secDest.id, 'offline', 'NO VIDEO INGEST');
+            secDest.isLive = false;
+          } else if (secDest.cloudStatus === 'OFFLINE' && elapsed > 15000) {
+            updateCardBadge(secDest.id, 'offline', 'OFFLINE');
+            secDest.isLive = false;
+          } else if (!secStatus && elapsed > 15000 && !secDest.isLive) {
+            updateCardBadge(secDest.id, 'offline', 'PLUGIN NOT RUNNING');
+            secDest.isLive = false;
+          } else if (elapsed < 8000) {
+            updateCardBadge(secDest.id, 'connecting', 'STARTING...');
             secDest.isLive = false;
           } else {
             updateCardBadge(secDest.id, 'live', 'LIVE');
@@ -4177,12 +4197,19 @@ async function pollCloudStatus() {
 
     if (activeFB && data.facebook) {
       activeFB.cloudStatus = data.facebook.status;
+      const elapsed = Date.now() - (state.streamStartTime || Date.now());
       if (data.facebook.isLive) {
         activeFB.isLive = true;
         updateCardBadge(activeFB.id, 'live', 'LIVE');
       } else if (data.facebook.status === 'VOD' || data.facebook.status === 'ENDED') {
         activeFB.isLive = false;
         updateCardBadge(activeFB.id, 'offline', 'ENDED');
+      } else if (data.facebook.status === 'UNPUBLISHED' && elapsed > 15000) {
+        activeFB.isLive = false;
+        updateCardBadge(activeFB.id, 'offline', 'NO VIDEO INGEST');
+      } else if (data.facebook.status === 'ERROR' || data.facebook.error) {
+        activeFB.isLive = false;
+        updateCardBadge(activeFB.id, 'offline', 'ERROR');
       }
     }
 

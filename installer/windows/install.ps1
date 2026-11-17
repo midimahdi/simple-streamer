@@ -139,12 +139,41 @@ if ($localDll -and (Test-Path $localDll)) {
     Copy-Item -Path $localDll -Destination $installedDll -Force
     Write-Host "    [OK] Simple Streamer native plugin installed from local bundle." -ForegroundColor Green
 } else {
+    $dllInstalled = $false
     try {
         $dllUrl = "https://github.com/midimahdi/simple-streamer/releases/latest/download/simple-streamer.dll"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $dllUrl -OutFile $installedDll -UseBasicParsing -TimeoutSec 15
-        Write-Host "    [OK] Simple Streamer native plugin downloaded and installed." -ForegroundColor Green
-    } catch {
+        if ((Test-Path $installedDll) -and (Get-Item $installedDll).Length -gt 10000) {
+            $dllInstalled = $true
+            Write-Host "    [OK] Simple Streamer native plugin downloaded and installed." -ForegroundColor Green
+        }
+    } catch {}
+
+    if (-not $dllInstalled) {
+        try {
+            $zipUrl = "https://github.com/midimahdi/simple-streamer/releases/latest/download/SimpleStreamer-Windows-x64.zip"
+            $tmpZip = "$env:TEMP\SimpleStreamer-Windows-x64.zip"
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $zipUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 30
+            $tmpExtract = "$env:TEMP\SimpleStreamerExtract_$([System.IO.Path]::GetRandomFileName())"
+            Expand-Archive -Path $tmpZip -DestinationPath $tmpExtract -Force
+            if (Test-Path "$tmpExtract\simple-streamer.dll") {
+                Copy-Item -Path "$tmpExtract\simple-streamer.dll" -Destination $installedDll -Force
+                $dllInstalled = $true
+            } elseif (Test-Path "$tmpExtract\plugin\64bit\simple-streamer.dll") {
+                Copy-Item -Path "$tmpExtract\plugin\64bit\simple-streamer.dll" -Destination $installedDll -Force
+                $dllInstalled = $true
+            }
+            Remove-Item -Path $tmpZip -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $tmpExtract -Recurse -Force -ErrorAction SilentlyContinue
+            if ($dllInstalled) {
+                Write-Host "    [OK] Simple Streamer native plugin extracted from release archive and installed." -ForegroundColor Green
+            }
+        } catch {}
+    }
+
+    if (-not $dllInstalled) {
         Write-Host "    [!] Could not download native plugin binary. Multi-streaming will fall back to bridge." -ForegroundColor Yellow
     }
 }
