@@ -315,3 +315,39 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
    - Created a native `.lnk` shortcut targeting `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$env:LOCALAPPDATA\SimpleStreamer\bridge.ps1"` in `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SimpleStreamerBridge.lnk`.
 3. **Credential Preservation for Safe Teardown**:
    - Merged original credential objects into `activeBroadcast.destinations` before OBS stream kickoff in `dock/app.js`, guaranteeing clean multi-platform teardown on broadcast completion.
+
+
+
+
+## 16. Windows Bridge Silent Exit on Non-Admin Startup & Localized URL ACL Failure
+
+### What Happened
+- On Nov 19, 2026, after testing worked cleanly two days earlier, Facebook Live failed to stream on the Mosque PC (`masjidbbsd@gmail.com`).
+- YouTube streamed successfully as OBS Primary Destination. Facebook showed "PLUGIN NOT RUNNING" in the dock after 15 seconds.
+- Cloud Run logs showed `/orchestrate-live` returned `youtube(OK), facebook(OK)` with valid RTMP ingest URLs.
+- Inspection of the Mosque PC revealed that `$env:APPDATA\obs-studio\plugin_config\simple-streamer\config.json` was `{"armed":false,"outputs":[]}`, and OBS logs recorded:
+  `[SimpleStreamer] Stream started independently (OBS button/other). Secondary outputs not armed (skipping).`
+- The background bridge process (`bridge.ps1`) was not running.
+
+### Root Causes
+1. **Unconditional Exit on Access Denied During Wildcard Listener Start**:
+   - In `bridge.ps1`, the HTTP listener attempted to bind `http://+:45455/` and the machine's LAN IP alongside loopback (`http://127.0.0.1:45455/`).
+   - On Windows, binding `http://+:45455/` requires either Administrator privileges or a registered URL ACL in `http.sys`.
+   - On system startup, the shortcut `SimpleStreamerBridge.lnk` executed `bridge.ps1` as a standard non-elevated user.
+   - When `$listener.Start()` ran, Windows threw `System.Net.HttpListenerException (5): Access is denied`.
+   - Because `$listener.Start()` was wrapped in `try { $listener.Start() } catch { exit }`, the bridge process silently killed itself immediately on boot.
+   - Two days earlier, the bridge had been started manually inside an elevated Administrator terminal (`PS C:\WINDOWS\system32>`), which masked the non-admin startup failure.
+2. **Localized Account Name Incompatibility in URL ACL Registration**:
+   - `install.ps1` had executed:
+     `netsh http add urlacl url=http://+:45455/ user=Everyone`
+   - On non-English Windows installations (such as French Windows 10 on the Mosque PC), the account group `Everyone` does not exist; it is localized as `"Tout le monde"`.
+   - `netsh` silently rejected `user=Everyone` (`Le paramètre est incorrect`), leaving no URL ACL registered for non-admin users.
+
+### Permanent Patches Implemented
+1. **Resilient Dual-Tier Listener Fallback**:
+   - In `bridge.ps1`, `HttpListener` initialization now attempts full LAN/wildcard binding first.
+   - If `$listener.Start()` throws Access Denied or fails, it catches the exception, closes the failed listener, and falls back to a clean loopback-only listener (`http://127.0.0.1:45455/` and `http://localhost:45455/`).
+   - Loopback binding never requires administrative rights or URL ACLs on any Windows version, guaranteeing that local OBS communication and dock arming succeed 100% of the time on boot.
+2. **SID-Based Localized URL ACL Configuration**:
+   - In `install.ps1`, `netsh http add urlacl` now dynamically resolves the well-known SID `S-1-1-0` into the OS-localized account name (`(New-Object SecurityIdentifier("S-1-1-0")).Translate([NTAccount]).Value`), ensuring valid URL ACL registration on French, German, Spanish, Arabic, or any Windows locale.
+

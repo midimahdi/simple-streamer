@@ -211,8 +211,14 @@ Write-Host "    Configuring Windows Firewall for Mobile Remote..." -ForegroundCo
 try {
     netsh advfirewall firewall add rule name="Simple Streamer Services" dir=in action=allow protocol=TCP localport=4455,45455 profile=any | Out-Null
     netsh advfirewall firewall add rule name="Simple Streamer Discovery" dir=in action=allow protocol=UDP localport=45456 profile=any | Out-Null
-    netsh http add urlacl url=http://+:45455/ user=Everyone | Out-Null
-} catch {}
+    
+    # Resolve localized Everyone account name (SID S-1-1-0) across all Windows languages (French: "Tout le monde", German: "Jeder", etc.)
+    $everyone = (New-Object System.Security.Principal.SecurityIdentifier("S-1-1-0")).Translate([System.Security.Principal.NTAccount]).Value
+    netsh http delete urlacl url=http://+:45455/ | Out-Null
+    netsh http add urlacl url=http://+:45455/ user="$everyone" | Out-Null
+} catch {
+    try { netsh http add urlacl url=http://+:45455/ user=Everyone | Out-Null } catch {}
+}
 
 # Copy Mobile Remote Web UI & Dock assets to bridge directory & plugin config
 $DockDir = $null
@@ -306,6 +312,7 @@ try {
 
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://127.0.0.1:45455/")
+$listener.Prefixes.Add("http://localhost:45455/")
 
 try {
     $ipObj = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^127\.' -and $_.IPAddress -notmatch '^169\.254\.' } | Select-Object -First 1
@@ -318,9 +325,25 @@ try {
 try {
     $listener.Prefixes.Add("http://+:45455/")
 } catch {}
+
+$started = $false
 try {
     $listener.Start()
-} catch { exit }
+    $started = $true
+} catch {
+    # If starting with wildcard or LAN IP failed (e.g. non-admin boot without URL ACL),
+    # gracefully fall back to loopback-only which never requires elevation or URL ACL on Windows.
+    try { $listener.Close() } catch {}
+    $listener = New-Object System.Net.HttpListener
+    $listener.Prefixes.Add("http://127.0.0.1:45455/")
+    $listener.Prefixes.Add("http://localhost:45455/")
+    try {
+        $listener.Start()
+        $started = $true
+    } catch {}
+}
+
+if (-not $started) { exit }
 
 while ($listener.IsListening) {
     try {
