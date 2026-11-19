@@ -2574,9 +2574,13 @@
       state.description = descVal;
       if (el.streamDescDisplay) el.streamDescDisplay.textContent = descVal;
 
-      // Persist to bridge state
-      const saveUrl = `http://${hostIp}:${bridgePort}/save-title?title=${encodeURIComponent(state.title || '')}&description=${encodeURIComponent(state.description || '')}`;
-      fetch(saveUrl).catch(() => {});
+      // Persist to bridge state via POST JSON (preserves multi-byte UTF-8 Unicode / Arabic)
+      fetch(`http://${hostIp}:${bridgePort}/save-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ title: state.title || '', description: state.description || '' }),
+        mode: 'cors',
+      }).catch(() => {});
 
       // Broadcast to OBS Dock
       callWs('BroadcastCustomEvent', {

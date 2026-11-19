@@ -211,17 +211,21 @@ function sendJson(res, statusCode, data) {
  */
 async function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks = [];
+    let length = 0;
     req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > 1e6) {
+      chunks.push(chunk);
+      length += chunk.length;
+      if (length > 1e6) {
         req.destroy();
         reject(new Error('Request body payload too large (>1MB)'));
       }
     });
     req.on('end', () => {
-      if (!body.trim()) return resolve({});
+      if (chunks.length === 0) return resolve({});
       try {
+        const body = Buffer.concat(chunks).toString('utf8');
+        if (!body.trim()) return resolve({});
         resolve(JSON.parse(body));
       } catch (err) {
         reject(new Error(`Malformed JSON body: ${err.message}`));

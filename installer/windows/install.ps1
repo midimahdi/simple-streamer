@@ -546,29 +546,45 @@ while ($listener.IsListening) {
             }
             $respJson = $respObj | ConvertTo-Json -Depth 5
             $buf = [System.Text.Encoding]::UTF8.GetBytes($respJson)
-            $res.ContentType = "application/json"
+            $res.ContentType = "application/json; charset=utf-8"
             $res.OutputStream.Write($buf, 0, $buf.Length)
             $res.Close()
             continue
         }
 
         if ($path -eq "/save-title") {
-            $title = $req.QueryString["title"]
-            $desc = $req.QueryString["description"]
+            $title = $null
+            $desc = $null
 
-            if (-not $title -and $req.HttpMethod -eq "POST") {
+            if ($req.HttpMethod -eq "POST" -or $req.HasEntityBody) {
                 try {
                     $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
                     $body = $reader.ReadToEnd()
                     $bJson = $body | ConvertFrom-Json
-                    if ($bJson.title) { $title = $bJson.title }
-                    if ($bJson.description) { $desc = $bJson.description }
+                    if ($null -ne $bJson.title) { $title = [string]$bJson.title }
+                    if ($null -ne $bJson.description) { $desc = [string]$bJson.description }
+                } catch {}
+            }
+
+            if ($null -eq $title -and $req.Url.Query) {
+                try {
+                    $rawQuery = $req.Url.Query.TrimStart('?')
+                    $pairs = $rawQuery.Split('&')
+                    foreach ($pair in $pairs) {
+                        $parts = $pair.Split('=', 2)
+                        if ($parts.Length -eq 2) {
+                            $k = [System.Net.WebUtility]::UrlDecode($parts[0])
+                            $v = [System.Net.WebUtility]::UrlDecode($parts[1])
+                            if ($k -eq "title") { $title = $v }
+                            if ($k -eq "description") { $desc = $v }
+                        }
+                    }
                 } catch {}
             }
 
             $bState = Get-BroadcastState
             $changed = $false
-            if ($title) {
+            if ($null -ne $title) {
                 if ($bState -is [PSCustomObject]) {
                     $bState.title = $title
                 } else {
@@ -589,7 +605,7 @@ while ($listener.IsListening) {
             }
 
             $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"status\`":\`"ok\`"}")
-            $res.ContentType = "application/json"
+            $res.ContentType = "application/json; charset=utf-8"
             $res.OutputStream.Write($buf, 0, $buf.Length)
             $res.Close()
             continue

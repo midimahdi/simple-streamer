@@ -868,8 +868,13 @@ function syncMetadataToBridgeAndRemote(titleOverride, descOverride) {
   if (title.includes('[object')) title = '';
   if (description.includes('[object')) description = '';
 
-  // Persist immediately to local bridge so background poll sees updated values
-  fetch(`http://127.0.0.1:45455/save-title?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`).catch(() => {});
+  // Persist immediately to local bridge via POST JSON (preserves multi-byte Unicode / Arabic without URL encoding corruption)
+  fetch('http://127.0.0.1:45455/save-title', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ title, description }),
+    mode: 'cors',
+  }).catch(() => {});
 
   // Broadcast to mobile remotes via OBS WebSocket CustomEvent
   if (state.obs && state.obs.isConnected) {
@@ -4936,13 +4941,74 @@ function initEvents() {
     }
   });
 
+/**
+ * Detects and heals multi-round UTF-8 / Windows-1252 / ISO-8859-1 Mojibake
+ * (e.g. Arabic text corrupted by legacy query string ANSI decoding)
+ */
+function cleanMojibake(str) {
+  if (!str || typeof str !== 'string') return str;
+  if (!/[ÃØÙ]/.test(str)) return str;
+
+  const cp1252Map = {
+    0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87,
+    0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E,
+    0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F
+  };
+
+  let current = str;
+  for (let r = 0; r < 5; r++) {
+    if (!/[ÃØÙ]/.test(current)) break;
+    try {
+      const bytes = new Uint8Array(current.length);
+      let valid = true;
+      for (let j = 0; j < current.length; j++) {
+        const code = current.charCodeAt(j);
+        if (code <= 255) {
+          bytes[j] = code;
+        } else if (cp1252Map[code]) {
+          bytes[j] = cp1252Map[code];
+        } else {
+          valid = false;
+          break;
+        }
+      }
+      if (!valid) break;
+      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      current = decoded;
+    } catch (_) {
+      break;
+    }
+  }
+  return current;
+}
+
+function isLikelyMojibake(incoming, currentLocal) {
+  if (!incoming) return false;
+  const currentHasArabic = /[\u0600-\u06FF]/.test(currentLocal || '');
+  const incomingHasArabic = /[\u0600-\u06FF]/.test(incoming);
+  const incomingHasMojibake = /[ÃØÙÆÂ‹Å‚’]/.test(incoming);
+  // Never overwrite clean user Arabic with mojibake gibberish
+  if (currentHasArabic && !incomingHasArabic && incomingHasMojibake) {
+    return true;
+  }
+  return false;
+}
+
   // Auto-save form inputs & live sync on typing
   let syncDebounceTimer = null;
   ['lessonTitle', 'lessonDescription'].forEach((id) => {
     const input = document.getElementById(id);
     if (!input) return;
-    const saved = localStorage.getItem('dock_' + id);
-    if (saved && !saved.includes('[object')) input.value = saved;
+    let saved = localStorage.getItem('dock_' + id);
+    if (saved && !saved.includes('[object')) {
+      saved = cleanMojibake(saved);
+      if (/[ÃØÙÆÂ‹Å‚’]/.test(saved) && !/[\u0600-\u06FF]/.test(saved)) {
+        saved = '';
+        localStorage.removeItem('dock_' + id);
+      }
+      input.value = saved;
+    }
     updateTextDirection(input);
     if (id === 'lessonTitle') updateTitleCounter();
     input.addEventListener('input', () => {
@@ -4981,15 +5047,21 @@ function initEvents() {
       const titleEl = document.getElementById('lessonTitle');
       const descEl = document.getElementById('lessonDescription');
       if (titleEl && (!titleEl.value || titleEl.value.includes('[object')) && cfg.title && !cfg.title.includes('[object')) {
-        titleEl.value = cfg.title;
-        localStorage.setItem('dock_lessonTitle', cfg.title);
-        updateTitleCounter();
-        updateTextDirection(titleEl);
+        const cleanedTitle = cleanMojibake(cfg.title);
+        if (!isLikelyMojibake(cleanedTitle, '')) {
+          titleEl.value = cleanedTitle;
+          localStorage.setItem('dock_lessonTitle', cleanedTitle);
+          updateTitleCounter();
+          updateTextDirection(titleEl);
+        }
       }
       if (descEl && (!descEl.value || descEl.value.includes('[object')) && cfg.description !== undefined && !cfg.description.includes('[object')) {
-        descEl.value = cfg.description;
-        localStorage.setItem('dock_lessonDescription', cfg.description);
-        updateTextDirection(descEl);
+        const cleanedDesc = cleanMojibake(cfg.description);
+        if (!isLikelyMojibake(cleanedDesc, '')) {
+          descEl.value = cleanedDesc;
+          localStorage.setItem('dock_lessonDescription', cleanedDesc);
+          updateTextDirection(descEl);
+        }
       }
     })
     .catch(() => {});
@@ -5010,16 +5082,22 @@ function initEvents() {
           localStorage.setItem('simple_streamer_auth_token', cfg.authToken.trim());
           verifyAccountSession();
         }
-        if (!isTypingTitle && titleEl && cfg.title !== undefined && !cfg.title.includes('[object') && cfg.title !== titleEl.value) {
-          titleEl.value = cfg.title;
-          localStorage.setItem('dock_lessonTitle', cfg.title);
-          updateTitleCounter();
-          updateTextDirection(titleEl);
+        if (!isTypingTitle && titleEl && cfg.title !== undefined && !cfg.title.includes('[object')) {
+          const incomingTitle = cleanMojibake(cfg.title);
+          if (incomingTitle !== titleEl.value && !isLikelyMojibake(incomingTitle, titleEl.value)) {
+            titleEl.value = incomingTitle;
+            localStorage.setItem('dock_lessonTitle', incomingTitle);
+            updateTitleCounter();
+            updateTextDirection(titleEl);
+          }
         }
-        if (!isTypingDesc && descEl && cfg.description !== undefined && !cfg.description.includes('[object') && cfg.description !== descEl.value) {
-          descEl.value = cfg.description;
-          localStorage.setItem('dock_lessonDescription', cfg.description);
-          updateTextDirection(descEl);
+        if (!isTypingDesc && descEl && cfg.description !== undefined && !cfg.description.includes('[object')) {
+          const incomingDesc = cleanMojibake(cfg.description);
+          if (incomingDesc !== descEl.value && !isLikelyMojibake(incomingDesc, descEl.value)) {
+            descEl.value = incomingDesc;
+            localStorage.setItem('dock_lessonDescription', incomingDesc);
+            updateTextDirection(descEl);
+          }
         }
       })
       .catch(() => {});
