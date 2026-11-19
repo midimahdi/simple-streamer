@@ -444,3 +444,29 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
 
 
 
+## 20. Evergreen Remote Asset Delivery & Liveness-Gated Broadcaster Discovery
+
+### What Happened
+- Users accessing the mobile remote via local LAN redirect (`http://<LAN_IP>:45455/remote`) continued running day-one unpatched versions of `remote.html` despite updates deployed to Cloud Run.
+- Machines with Simple Streamer installed but OBS closed appeared as available broadcast stations across the local network.
+
+### Root Causes
+1. **Static Un-Updated Local Disk Assets**:
+   - `bridge.ps1` served `remote.html` directly from a static file written on install day (`%LOCALAPPDATA%\SimpleStreamer\remote.html`), with zero check for newer versions from production Cloud Run.
+   - Unlike the OBS dock (which loads `https://simple-streamer.bdjlmn.com/dock` directly from the cloud on every OBS launch), the mobile remote was frozen in time on the user's hard drive.
+2. **Ungated Discovery Responders**:
+   - Windows UDP discovery responder (`$udpScript` on port 45456) and macOS mDNS supervisor (`dns-sd`) replied to discovery broadcasts continuously, regardless of whether OBS Studio was running.
+
+### Permanent Architectural Fixes
+1. **Evergreen Cloud-Syncing Bridge**:
+   - `bridge.ps1` and `install.ps1` now check if the cached `remote.html` is older than 5 minutes. If internet access is available, it pulls the latest `remote.html` from `https://simple-streamer.bdjlmn.com/remote.html` and refreshes disk cache before serving.
+2. **OBS Dock Push Synchronization**:
+   - Inside OBS Studio, `dock/app.js` (cloud-hosted and evergreen) pulls `remote.html` from Cloud Run upon launch and pushes it to the local bridge via `POST /update-remote`, guaranteeing the local bridge always has the exact production bundle.
+3. **OBS Liveness-Gated Network Discovery**:
+   - Windows UDP responder on port 45456 checks `TcpClient` connection to OBS port 4455 before sending `SIMPLE_STREAMER_HERE`.
+   - macOS bridge `mdns_supervisor_thread` checks `is_obs_online(4455)` before advertising `simple-streamer.local`. If OBS quits, advertising terminates immediately.
+
+
+
+
+
