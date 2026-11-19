@@ -26,7 +26,7 @@ function Save-BroadcastState($stateObj) {
     [System.IO.File]::WriteAllText($bFile, $json, [System.Text.Encoding]::UTF8)
 }
 
-# Start background UDP discovery responder
+# Start background UDP discovery responder (Strictly gated by OBS liveness)
 try {
     $udpScript = {
         try {
@@ -37,8 +37,21 @@ try {
                 $bytes = $udp.Receive([ref]$ep)
                 $str = [System.Text.Encoding]::UTF8.GetString($bytes)
                 if ($str -match "SIMPLE_STREAMER_DISCOVER") {
-                    $resp = [System.Text.Encoding]::UTF8.GetBytes("SIMPLE_STREAMER_HERE:45455:4455")
-                    $udp.Send($resp, $resp.Length, $ep) | Out-Null
+                    # Only reply if OBS is actively running and listening on port 4455
+                    $obsLive = $false
+                    try {
+                        $t = New-Object System.Net.Sockets.TcpClient
+                        $iar = $t.BeginConnect("127.0.0.1", 4455, $null, $null)
+                        if ($iar.AsyncWaitHandle.WaitOne(200, $false)) {
+                            $t.EndConnect($iar)
+                            $obsLive = $true
+                        }
+                        $t.Close()
+                    } catch {}
+                    if ($obsLive) {
+                        $resp = [System.Text.Encoding]::UTF8.GetBytes("SIMPLE_STREAMER_HERE:45455:4455")
+                        $udp.Send($resp, $resp.Length, $ep) | Out-Null
+                    }
                 }
             }
         } catch {}
@@ -178,6 +191,30 @@ while ($listener.IsListening) {
         if ($path -eq "/remote" -or $path -eq "/remote.html") {
             $remoteFile = "$BridgeDir\remote.html"
             if (-not (Test-Path $remoteFile)) { $remoteFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\remote.html" }
+
+            # Evergreen Auto-Sync: pull latest remote.html from production cloud if connected (cached for 5 minutes)
+            $lastSyncFile = "$env:LOCALAPPDATA\SimpleStreamer\last_remote_sync.txt"
+            $shouldSync = $true
+            if (Test-Path $lastSyncFile) {
+                try {
+                    $lastSync = [datetime]::Parse((Get-Content $lastSyncFile -Raw).Trim())
+                    if ((Get-Date) - $lastSync -lt [timespan]::FromMinutes(5)) { $shouldSync = $false }
+                } catch {}
+            }
+            if ($shouldSync) {
+                try {
+                    $wc = New-Object System.Net.WebClient
+                    $wc.Encoding = [System.Text.Encoding]::UTF8
+                    $cloudHtml = $wc.DownloadString("https://simple-streamer.bdjlmn.com/remote.html")
+                    if ($cloudHtml -and $cloudHtml.Contains("<html") -and $cloudHtml.Contains("SIMPLE STREAMER")) {
+                        [System.IO.File]::WriteAllText($remoteFile, $cloudHtml, [System.Text.Encoding]::UTF8)
+                        $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
+                        if (Test-Path $d) { try { [System.IO.File]::WriteAllText("$d\remote.html", $cloudHtml, [System.Text.Encoding]::UTF8) } catch {} }
+                        [System.IO.File]::WriteAllText($lastSyncFile, (Get-Date).ToString("o"), [System.Text.Encoding]::UTF8)
+                    }
+                } catch {}
+            }
+
             if (Test-Path $remoteFile) {
                 $html = [System.IO.File]::ReadAllBytes($remoteFile)
                 $res.ContentType = "text/html; charset=utf-8"

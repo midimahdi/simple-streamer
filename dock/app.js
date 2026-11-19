@@ -5167,6 +5167,25 @@ function isLikelyMojibake(incoming, currentLocal) {
     setInterval(heartbeatPresence, 15000);
     setTimeout(heartbeatPresence, 2000);
   }
+
+  // Auto-sync evergreen mobile remote to local bridge so on-disk remote.html stays evergreen
+  async function syncEvergreenRemoteToBridge() {
+    try {
+      const res = await fetch(`${state.config.backendUrl}/remote.html`);
+      if (res.ok) {
+        const cloudHtml = await res.text();
+        if (cloudHtml && cloudHtml.includes('<!DOCTYPE html>') && cloudHtml.includes('SIMPLE STREAMER')) {
+          await fetch('http://127.0.0.1:45455/update-remote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+            body: cloudHtml,
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
+  }
+  setTimeout(syncEvergreenRemoteToBridge, 3000);
+  setInterval(syncEvergreenRemoteToBridge, 600000);
 }
 
 // Initial Boot Sequence

@@ -106,51 +106,61 @@ static void *mdns_supervisor_thread(void *arg) {
 
     while (1) {
         @autoreleasepool {
-            NSString *currentIp = get_local_lan_ip();
-            if (currentIp && ![currentIp isEqualToString:@"127.0.0.1"]) {
-                BOOL needsRestart = NO;
-                if (![currentIp isEqualToString:lastIp] || dns_sd_pid == 0) {
-                    needsRestart = YES;
-                } else if (dns_sd_pid > 0) {
-                    if (kill(dns_sd_pid, 0) != 0) {
-                        needsRestart = YES;
-                    }
+            BOOL obsOnline = is_obs_online(4455);
+            if (!obsOnline) {
+                // If OBS is not running, stop advertising mDNS so idle machines never hijack discovery
+                if (dns_sd_pid > 0) {
+                    kill(dns_sd_pid, SIGTERM);
+                    waitpid(dns_sd_pid, NULL, WNOHANG);
+                    dns_sd_pid = 0;
                 }
-
-                if (needsRestart) {
-                    if (dns_sd_pid > 0) {
-                        kill(dns_sd_pid, SIGTERM);
-                        waitpid(dns_sd_pid, NULL, WNOHANG);
-                        dns_sd_pid = 0;
+            } else {
+                NSString *currentIp = get_local_lan_ip();
+                if (currentIp && ![currentIp isEqualToString:@"127.0.0.1"]) {
+                    BOOL needsRestart = NO;
+                    if (![currentIp isEqualToString:lastIp] || dns_sd_pid == 0) {
+                        needsRestart = YES;
+                    } else if (dns_sd_pid > 0) {
+                        if (kill(dns_sd_pid, 0) != 0) {
+                            needsRestart = YES;
+                        }
                     }
 
-                    char *argv[] = {
-                        "/usr/bin/dns-sd",
-                        "-P",
-                        "Simple Streamer",
-                        "_http._tcp",
-                        "local",
-                        "45455",
-                        "simple-streamer.local",
-                        (char *)[currentIp UTF8String],
-                        NULL
-                    };
+                    if (needsRestart) {
+                        if (dns_sd_pid > 0) {
+                            kill(dns_sd_pid, SIGTERM);
+                            waitpid(dns_sd_pid, NULL, WNOHANG);
+                            dns_sd_pid = 0;
+                        }
 
-                    posix_spawn_file_actions_t actions;
-                    posix_spawn_file_actions_init(&actions);
-                    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
-                    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+                        char *argv[] = {
+                            "/usr/bin/dns-sd",
+                            "-P",
+                            "Simple Streamer",
+                            "_http._tcp",
+                            "local",
+                            "45455",
+                            "simple-streamer.local",
+                            (char *)[currentIp UTF8String],
+                            NULL
+                        };
 
-                    posix_spawnattr_t attr;
-                    posix_spawnattr_init(&attr);
-                    posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
+                        posix_spawn_file_actions_t actions;
+                        posix_spawn_file_actions_init(&actions);
+                        posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
+                        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
 
-                    if (posix_spawn(&dns_sd_pid, "/usr/bin/dns-sd", &actions, &attr, argv, environ) == 0) {
-                        lastIp = [currentIp copy];
-                        fprintf(stderr, "[Bridge] Registered mDNS simple-streamer.local -> %s (pid %d)\n", [currentIp UTF8String], dns_sd_pid);
+                        posix_spawnattr_t attr;
+                        posix_spawnattr_init(&attr);
+                        posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
+
+                        if (posix_spawn(&dns_sd_pid, "/usr/bin/dns-sd", &actions, &attr, argv, environ) == 0) {
+                            lastIp = [currentIp copy];
+                            fprintf(stderr, "[Bridge] Registered mDNS simple-streamer.local -> %s (pid %d)\n", [currentIp UTF8String], dns_sd_pid);
+                        }
+                        posix_spawnattr_destroy(&attr);
+                        posix_spawn_file_actions_destroy(&actions);
                     }
-                    posix_spawnattr_destroy(&attr);
-                    posix_spawn_file_actions_destroy(&actions);
                 }
             }
         }
