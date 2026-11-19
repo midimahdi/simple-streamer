@@ -1692,7 +1692,7 @@ function renderAuthErrorHtml(title, message) {
   // Smart Mobile Remote Dynamic Router:
   // If an active desktop rig has heartbeated recently, immediately redirect mobile browsers
   // to the local bridge HTTP endpoint (avoiding all mixed-content and stale IP issues).
-  if (ENABLE_PRESENCE_REDIRECT && (req.method === 'GET' || req.method === 'HEAD') && (pathname === '/remote' || pathname === '/remote.html')) {
+  if (ENABLE_PRESENCE_REDIRECT && (req.method === 'GET' || req.method === 'HEAD') && (pathname === '/remote' || pathname === '/remote/')) {
     const isRecent = activePresence && (Date.now() - activePresence.updatedAt < 90000);
     if (isRecent) {
       const searchParams = new URLSearchParams(url.search);
