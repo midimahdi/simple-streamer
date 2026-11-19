@@ -4983,13 +4983,18 @@ function cleanMojibake(str) {
   return current;
 }
 
+function hasNonLatinLetters(str) {
+  // Matches letters that are not Latin (e.g. Arabic, Devanagari/Hindi, CJK/Chinese, Tamil, Cyrillic, etc.)
+  return /[^\p{Script=Latin}\p{P}\p{Z}\p{N}\p{M}\p{S}]/u.test(str || '');
+}
+
 function isLikelyMojibake(incoming, currentLocal) {
   if (!incoming) return false;
-  const currentHasArabic = /[\u0600-\u06FF]/.test(currentLocal || '');
-  const incomingHasArabic = /[\u0600-\u06FF]/.test(incoming);
+  const currentHasNonLatin = hasNonLatinLetters(currentLocal);
+  const incomingHasNonLatin = hasNonLatinLetters(incoming);
   const incomingHasMojibake = /[ÃØÙÆÂ‹Å‚’]/.test(incoming);
-  // Never overwrite clean user Arabic with mojibake gibberish
-  if (currentHasArabic && !incomingHasArabic && incomingHasMojibake) {
+  // Never overwrite clean user non-Latin text (Arabic, Chinese, Hindi, etc.) with Latin Mojibake gibberish
+  if (currentHasNonLatin && !incomingHasNonLatin && incomingHasMojibake) {
     return true;
   }
   return false;
