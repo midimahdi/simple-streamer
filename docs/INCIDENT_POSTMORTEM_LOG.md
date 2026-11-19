@@ -351,3 +351,32 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
 2. **SID-Based Localized URL ACL Configuration**:
    - In `install.ps1`, `netsh http add urlacl` now dynamically resolves the well-known SID `S-1-1-0` into the OS-localized account name (`(New-Object SecurityIdentifier("S-1-1-0")).Translate([NTAccount]).Value`), ensuring valid URL ACL registration on French, German, Spanish, Arabic, or any Windows locale.
 
+
+
+
+## 17. Facebook Status Badge Flapping Between LIVE and ERROR During Active Ingest
+
+### What Happened
+- During live test broadcasting on the Mosque PC, the actual Facebook Live video stream worked cleanly on Facebook.
+- However, in the OBS dock card for Facebook, the status badge repeatedly flapped: `LIVE` -> `ERROR` (or `NO VIDEO INGEST`) -> (1.5 seconds later) -> `LIVE`.
+
+### Root Causes
+1. **Third-Party Graph API Rate Limits and Transient Check Failures**:
+   - The dock's `pollCloudStatus()` queried Meta Graph API via `/broadcast-status` every 9 seconds.
+   - If Meta Graph API returned a transient rate-limit warning, momentary network timeout, or non-200 error, `pollCloudStatus()` unilaterally marked the destination as `activeFB.isLive = false`, `cloudStatus = 'error'`, and called `updateCardBadge(..., 'offline', 'ERROR')`.
+   - Meanwhile, OBS was actively encoding and pushing healthy RTMP frames (`secStatus.outputActive === true`).
+   - The high-frequency local OBS telemetry loop (`metricsInterval`), running every 1.5 seconds, saw that OBS's RTMP output was healthy and immediately flipped the badge back to `LIVE`.
+   - This created a continuous 9-second visual flapping cycle between `LIVE` and `ERROR`.
+2. **Missing Ingest Stream Health Evaluation**:
+   - In `facebook.mjs`, `getFacebookLiveStatus()` only checked `data.status === 'LIVE' || data.status === 'LIVE_NOW'`.
+   - During video ingest, Facebook's video object often reports `status: "UNPUBLISHED"` while simultaneously reporting `stream_health: { status: "GOOD" }`. By ignoring `stream_health`, the backend falsely reported `isLive: false` during ingest.
+
+### Permanent Patches Implemented
+1. **Primary Source of Truth Arbitration**:
+   - In `dock/app.js`, OBS's local RTMP output status is enforced as the authoritative source of truth. If OBS confirms the output is transmitting (`activeFB.isLive === true`), transient cloud polling errors are logged to diagnostics and prevented from overwriting the live badge.
+2. **Meta Stream Health Recognition**:
+   - In `facebook.mjs`, `isLive` now checks `healthStatus === 'GOOD' || healthStatus === 'OK'` alongside `data.status === 'LIVE'`, correctly recognizing active ingest.
+3. **Adaptive Cloud Poll Throttle**:
+   - In `dock/app.js`, once all destinations are confirmed live, cloud status polling backs off from 9s to 20s to prevent hitting Meta Graph API rate limits during long broadcasts.
+
+
