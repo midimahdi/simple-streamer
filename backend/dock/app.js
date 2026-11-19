@@ -1441,6 +1441,7 @@ async function updateRemotePanelInfo() {
   let hostIp = '127.0.0.1';
   let bridgePort = 45455;
   let obsPort = 4455;
+  let machineName = '';
 
   try {
     const res = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors' });
@@ -1449,6 +1450,7 @@ async function updateRemotePanelInfo() {
       if (data.hostIp) hostIp = data.hostIp;
       if (data.bridgePort) bridgePort = data.bridgePort;
       if (data.obsPort) obsPort = data.obsPort;
+      if (data.machineName) machineName = data.machineName;
     }
   } catch (_) {}
 
@@ -1456,7 +1458,9 @@ async function updateRemotePanelInfo() {
     hostIp = window.location.hostname;
   }
 
-  const mdnsUrl = `http://simple-streamer.local:${bridgePort}/remote?pin=${state.sessionPin}&fallback=${hostIp}&port=${obsPort}`;
+  const cleanMachineName = machineName ? machineName.toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
+  const mdnsHost = cleanMachineName ? `${cleanMachineName}.local` : 'simple-streamer.local';
+  const mdnsUrl = `http://${mdnsHost}:${bridgePort}/remote?pin=${state.sessionPin}&fallback=${hostIp}&port=${obsPort}`;
   const ipUrl = `http://${hostIp}:${bridgePort}/remote?pin=${state.sessionPin}&port=${obsPort}`;
   const primaryUrl = hostIp !== '127.0.0.1' ? ipUrl : mdnsUrl;
 
@@ -1464,7 +1468,7 @@ async function updateRemotePanelInfo() {
     el.remoteUrlDisplay.textContent = `http://${hostIp}:${bridgePort}/remote`;
   }
   if (el.remoteMdnsDisplay) {
-    el.remoteMdnsDisplay.textContent = hostIp !== '127.0.0.1' ? `mDNS fallback: ${mdnsUrl}` : '';
+    el.remoteMdnsDisplay.textContent = hostIp !== '127.0.0.1' ? `or http://${mdnsHost}:${bridgePort}/remote` : '';
   }
 
   if (el.remoteQrContainer && typeof QRCode !== 'undefined') {
