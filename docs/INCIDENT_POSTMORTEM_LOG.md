@@ -412,3 +412,35 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
 
 
 
+
+## 19. Multi-Rig Switcher False Positives & Mobile Remote Arabic Metadata Split-Second Mojibake Flicker
+
+### What Happened
+1. On the mobile phone remote (via universal link), the operator's laptop appeared as an option in the switcher bar even though OBS was closed on the laptop.
+2. In the mobile remote, Arabic titles and descriptions would intermittently flicker into garbled Mojibake characters before snapping back to clean Arabic a split second later.
+
+### Root Causes
+1. **Unfiltered Broadcaster Discovery**:
+   - The local bridge service (`simple-streamer-bridge`) runs in the background on machines where Simple Streamer is installed to support remote wake/readiness.
+   - In `dock/remote.html`, `updateRigSwitcherUI()` iterated across `allRigs` (every responding bridge) rather than filtering for `rig.obsOnline === true`. Any reachable workstation on the LAN was rendered in the top switcher bar regardless of whether OBS was open.
+2. **Missing Mojibake Sanitization in Mobile Remote**:
+   - While `cleanMojibake()` was added to the desktop OBS dock (`dock/app.js`), `dock/remote.html` was missing these sanitization guards.
+   - When the operator typed Arabic during earlier incidents, the legacy query string bug had written garbled text into the bridge's local disk file (`broadcast_state.json`).
+3. **Competing Data Stream Race Condition**:
+   - Every 2 seconds, `syncWithDock()` fetched `/remote-config` via HTTP, which read the raw corrupted string from `broadcast_state.json` and immediately rendered it.
+   - A fraction of a second later, OBS WebSocket delivered `SYNC_RESPONSE` / `METADATA_CHANGED` from the OBS dock (which held the cleaned Arabic in memory) and overwrote it.
+   - This caused visible split-second flickering between the two data sources.
+
+### Permanent Patches Implemented
+1. **Rig Switcher Online Filtering**:
+   - In `dock/remote.html`, `updateRigSwitcherUI()` now filters `displayRigs` to only include stations with `obsOnline === true` (or the currently selected rig).
+   - If fewer than 2 active OBS rigs are running on the LAN, the switcher bar is completely hidden.
+2. **Mobile Remote Mojibake Ingest Guards**:
+   - Integrated `cleanMojibake()`, `hasNonLatinLetters()`, and `isLikelyMojibake()` into `dock/remote.html`.
+   - All title and description updates from `/remote-config`, WebSocket events, and the Edit Details modal are sanitized before rendering.
+3. **Automatic On-Disk Bridge Healing**:
+   - Added auto-healing logic in both `dock/app.js` and `dock/remote.html`: whenever cleaned text differs from the bridge's incoming raw string, a silent `POST /save-title` with UTF-8 JSON is sent to the local bridge to permanently heal `broadcast_state.json` on disk.
+
+
+
+

@@ -684,6 +684,26 @@ while ($listener.IsListening) {
             continue
         }
 
+        if ($path -eq "/update-remote" -and $req.HttpMethod -eq "POST") {
+            try {
+                $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+                $body = $reader.ReadToEnd()
+                if ($body -and $body.Contains("<html") -and $body.Contains("SIMPLE STREAMER")) {
+                    $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
+                    if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+                    [System.IO.File]::WriteAllText("$d\remote.html", $body, [System.Text.Encoding]::UTF8)
+                    if (Test-Path "$BridgeDir") {
+                        try { [System.IO.File]::WriteAllText("$BridgeDir\remote.html", $body, [System.Text.Encoding]::UTF8) } catch {}
+                    }
+                }
+            } catch {}
+            $buf = [System.Text.Encoding]::UTF8.GetBytes("{\`"ok\`":true}")
+            $res.ContentType = "application/json"
+            $res.OutputStream.Write($buf, 0, $buf.Length)
+            $res.Close()
+            continue
+        }
+
         if ($path -eq "/save-secondary") {
             $d = "$env:APPDATA\obs-studio\plugin_config\simple-streamer"
             if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }

@@ -4863,8 +4863,8 @@ function initEvents() {
     if (eventData.action === 'SYNC_REQUEST') {
       const titleEl = document.getElementById('lessonTitle');
       const descEl = document.getElementById('lessonDescription');
-      const curTitle = titleEl ? titleEl.value.trim() : '';
-      const curDesc = descEl ? descEl.value.trim() : '';
+      const curTitle = titleEl ? cleanMojibake(titleEl.value.trim()) : '';
+      const curDesc = descEl ? cleanMojibake(descEl.value.trim()) : '';
 
       await state.obs.call('BroadcastCustomEvent', {
         eventData: {
@@ -5051,22 +5051,38 @@ function isLikelyMojibake(incoming, currentLocal) {
       }
       const titleEl = document.getElementById('lessonTitle');
       const descEl = document.getElementById('lessonDescription');
+      let healedBridge = false;
+      let finalTitle = titleEl ? titleEl.value : '';
+      let finalDesc = descEl ? descEl.value : '';
+
       if (titleEl && (!titleEl.value || titleEl.value.includes('[object')) && cfg.title && !cfg.title.includes('[object')) {
         const cleanedTitle = cleanMojibake(cfg.title);
         if (!isLikelyMojibake(cleanedTitle, '')) {
           titleEl.value = cleanedTitle;
+          finalTitle = cleanedTitle;
           localStorage.setItem('dock_lessonTitle', cleanedTitle);
           updateTitleCounter();
           updateTextDirection(titleEl);
+          if (cleanedTitle !== cfg.title) healedBridge = true;
         }
       }
       if (descEl && (!descEl.value || descEl.value.includes('[object')) && cfg.description !== undefined && !cfg.description.includes('[object')) {
         const cleanedDesc = cleanMojibake(cfg.description);
         if (!isLikelyMojibake(cleanedDesc, '')) {
           descEl.value = cleanedDesc;
+          finalDesc = cleanedDesc;
           localStorage.setItem('dock_lessonDescription', cleanedDesc);
           updateTextDirection(descEl);
+          if (cleanedDesc !== cfg.description) healedBridge = true;
         }
+      }
+
+      if (healedBridge) {
+        fetch('http://127.0.0.1:45455/save-title', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ title: finalTitle, description: finalDesc }),
+        }).catch(() => {});
       }
     })
     .catch(() => {});
@@ -5087,22 +5103,38 @@ function isLikelyMojibake(incoming, currentLocal) {
           localStorage.setItem('simple_streamer_auth_token', cfg.authToken.trim());
           verifyAccountSession();
         }
+        let healedBridge = false;
+        let healTitle = titleEl ? titleEl.value : '';
+        let healDesc = descEl ? descEl.value : '';
+
         if (!isTypingTitle && titleEl && cfg.title !== undefined && !cfg.title.includes('[object')) {
           const incomingTitle = cleanMojibake(cfg.title);
           if (incomingTitle !== titleEl.value && !isLikelyMojibake(incomingTitle, titleEl.value)) {
             titleEl.value = incomingTitle;
+            healTitle = incomingTitle;
             localStorage.setItem('dock_lessonTitle', incomingTitle);
             updateTitleCounter();
             updateTextDirection(titleEl);
+            if (incomingTitle !== cfg.title) healedBridge = true;
           }
         }
         if (!isTypingDesc && descEl && cfg.description !== undefined && !cfg.description.includes('[object')) {
           const incomingDesc = cleanMojibake(cfg.description);
           if (incomingDesc !== descEl.value && !isLikelyMojibake(incomingDesc, descEl.value)) {
             descEl.value = incomingDesc;
+            healDesc = incomingDesc;
             localStorage.setItem('dock_lessonDescription', incomingDesc);
             updateTextDirection(descEl);
+            if (incomingDesc !== cfg.description) healedBridge = true;
           }
+        }
+
+        if (healedBridge) {
+          fetch('http://127.0.0.1:45455/save-title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ title: healTitle, description: healDesc }),
+          }).catch(() => {});
         }
       })
       .catch(() => {});

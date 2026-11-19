@@ -1538,6 +1538,62 @@
       if (el.switchPcModal) el.switchPcModal.style.display = 'none';
     }
 
+    // --- Unicode / Mojibake Protection & Healing Helpers ---
+    function cleanMojibake(str) {
+      if (!str || typeof str !== 'string') return str;
+      if (!/[ÃØÙ]/.test(str)) return str;
+
+      const cp1252Map = {
+        0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87,
+        0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E,
+        0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+        0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F
+      };
+
+      let current = str;
+      for (let r = 0; r < 5; r++) {
+        if (!/[ÃØÙ]/.test(current)) break;
+        try {
+          const bytes = new Uint8Array(current.length);
+          let valid = true;
+          for (let j = 0; j < current.length; j++) {
+            const code = current.charCodeAt(j);
+            if (code <= 255) {
+              bytes[j] = code;
+            } else if (cp1252Map[code]) {
+              bytes[j] = cp1252Map[code];
+            } else {
+              valid = false;
+              break;
+            }
+          }
+          if (!valid) break;
+          const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          current = decoded;
+        } catch (_) {
+          break;
+        }
+      }
+      return current;
+    }
+
+    function hasNonLatinLetters(str) {
+      // Matches letters that are not Latin (e.g. Arabic, Devanagari/Hindi, CJK/Chinese, Tamil, Cyrillic, etc.)
+      return /[^\p{Script=Latin}\p{P}\p{Z}\p{N}\p{M}\p{S}]/u.test(str || '');
+    }
+
+    function isLikelyMojibake(incoming, currentLocal) {
+      if (!incoming) return false;
+      const currentHasNonLatin = hasNonLatinLetters(currentLocal);
+      const incomingHasNonLatin = hasNonLatinLetters(incoming);
+      const incomingHasMojibake = /[ÃØÙÆÂ‹Å‚’]/.test(incoming);
+      // Never overwrite clean user non-Latin text (Arabic, Chinese, Hindi, etc.) with Latin Mojibake gibberish
+      if (currentHasNonLatin && !incomingHasNonLatin && incomingHasMojibake) {
+        return true;
+      }
+      return false;
+    }
+
     // --- Rig Registry & Multi-Broadcaster Switcher ---
     // Keyed by unique machine identity (machineId / hwid) to avoid duplicate entries for same PC
     const discoveredRigs = new Map();
@@ -1546,12 +1602,16 @@
       if (!el.rigSwitcherBar || !el.rigButtonsWrap) return;
       const allRigs = Array.from(discoveredRigs.values());
       const onlineRigs = allRigs.filter(r => r.obsOnline);
+      const currentRig = allRigs.find(r => r.ip === hostIp || r.targetHost === hostIp || r.hostIp === hostIp);
 
-      // Show switcher bar only when 2+ UNIQUE physical rigs exist on the LAN
-      if (allRigs.length > 1) {
+      // Only display rigs that are actively OBS online, or the current rig if it is currently selected
+      const displayRigs = allRigs.filter(r => r.obsOnline || (currentRig && (r.machineKey === currentRig.machineKey || r.ip === hostIp)));
+
+      // Show switcher bar only when 2+ rigs are relevant (e.g. 2+ online rigs, or current rig is offline but an online alternative exists)
+      if (displayRigs.length > 1 && (onlineRigs.length > 1 || (currentRig && !currentRig.obsOnline && onlineRigs.length > 0))) {
         el.rigSwitcherBar.style.display = 'flex';
         el.rigButtonsWrap.innerHTML = '';
-        allRigs.forEach(rig => {
+        displayRigs.forEach(rig => {
           const btn = document.createElement('button');
           const isCurrent = (rig.ip === hostIp || rig.targetHost === hostIp || rig.hostIp === hostIp);
           btn.className = `btn-rig-pill ${isCurrent ? 'active' : ''}`;
@@ -1568,7 +1628,6 @@
       }
 
       // Check current rig OBS liveness
-      const currentRig = Array.from(discoveredRigs.values()).find(r => r.ip === hostIp || r.targetHost === hostIp || r.hostIp === hostIp);
       if (currentRig && !currentRig.obsOnline) {
         if (el.obsClosedNotice) {
           el.obsClosedNotice.style.display = 'flex';
@@ -1727,12 +1786,18 @@
         if (cfg.obsPass) obsPass = cfg.obsPass;
         if (cfg.obsPort) obsPort = cfg.obsPort;
         if (cfg.title) {
-          state.title = cfg.title;
-          el.streamTitleDisplay.textContent = cfg.title;
+          const cleanedTitle = cleanMojibake(cfg.title);
+          if (!isLikelyMojibake(cleanedTitle, state.title)) {
+            state.title = cleanedTitle;
+            el.streamTitleDisplay.textContent = cleanedTitle;
+          }
         }
         if (cfg.description !== undefined) {
-          state.description = cfg.description;
-          if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
+          const cleanedDesc = cleanMojibake(cfg.description);
+          if (!isLikelyMojibake(cleanedDesc, state.description)) {
+            state.description = cleanedDesc;
+            if (el.streamDescDisplay) el.streamDescDisplay.textContent = cleanedDesc;
+          }
         }
         if (cfg.destinations && Array.isArray(cfg.destinations)) {
           state.destinations = cfg.destinations;
@@ -1983,12 +2048,18 @@
           }
         } else if (data.action === 'SYNC_RESPONSE' || data.action === 'METADATA_CHANGED') {
           if (data.title !== undefined && data.title) {
-            state.title = data.title;
-            el.streamTitleDisplay.textContent = data.title;
+            const cleanedTitle = cleanMojibake(data.title);
+            if (!isLikelyMojibake(cleanedTitle, state.title)) {
+              state.title = cleanedTitle;
+              el.streamTitleDisplay.textContent = cleanedTitle;
+            }
           }
           if (data.description !== undefined) {
-            state.description = data.description;
-            if (el.streamDescDisplay) el.streamDescDisplay.textContent = data.description;
+            const cleanedDesc = cleanMojibake(data.description);
+            if (!isLikelyMojibake(cleanedDesc, state.description)) {
+              state.description = cleanedDesc;
+              if (el.streamDescDisplay) el.streamDescDisplay.textContent = cleanedDesc;
+            }
           }
           if (data.destinations && Array.isArray(data.destinations)) {
             if (!state.destinations || state.destinations.length === 0) {
@@ -2024,13 +2095,37 @@
           if (res.ok) {
             const cfg = await res.json();
             if (cfg && cfg.ok) {
-              if (cfg.title !== undefined && cfg.title !== state.title) {
-                state.title = cfg.title;
-                if (el.streamTitleDisplay) el.streamTitleDisplay.textContent = cfg.title || 'Untitled Broadcast';
+              if (cfg.title !== undefined) {
+                const cleanedTitle = cleanMojibake(cfg.title);
+                if (cleanedTitle !== state.title && !isLikelyMojibake(cleanedTitle, state.title)) {
+                  state.title = cleanedTitle;
+                  if (el.streamTitleDisplay) el.streamTitleDisplay.textContent = cleanedTitle || 'Untitled Broadcast';
+                  // Silently heal dirty bridge state on disk
+                  if (cleanedTitle && cleanedTitle !== cfg.title) {
+                    fetch(`http://${hostIp}:${bridgePort}/save-title`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                      body: JSON.stringify({ title: cleanedTitle, description: state.description || '' }),
+                      mode: 'cors',
+                    }).catch(() => {});
+                  }
+                }
               }
-              if (cfg.description !== undefined && cfg.description !== state.description) {
-                state.description = cfg.description;
-                if (el.streamDescDisplay) el.streamDescDisplay.textContent = cfg.description;
+              if (cfg.description !== undefined) {
+                const cleanedDesc = cleanMojibake(cfg.description);
+                if (cleanedDesc !== state.description && !isLikelyMojibake(cleanedDesc, state.description)) {
+                  state.description = cleanedDesc;
+                  if (el.streamDescDisplay) el.streamDescDisplay.textContent = cleanedDesc;
+                  // Silently heal dirty bridge state on disk
+                  if (cleanedDesc && cleanedDesc !== cfg.description) {
+                    fetch(`http://${hostIp}:${bridgePort}/save-title`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                      body: JSON.stringify({ title: state.title || '', description: cleanedDesc }),
+                      mode: 'cors',
+                    }).catch(() => {});
+                  }
+                }
               }
               if (cfg.destinations && Array.isArray(cfg.destinations)) {
                 let changed = false;
@@ -2550,8 +2645,8 @@
     // --- 4. Title & Setup Management ---
     el.btnEditTitle.onclick = () => {
       triggerFeedback(el.btnEditTitle, 'tap');
-      el.modalTitleInput.value = state.title || '';
-      if (el.modalDescInput) el.modalDescInput.value = state.description || '';
+      el.modalTitleInput.value = cleanMojibake(state.title || '');
+      if (el.modalDescInput) el.modalDescInput.value = cleanMojibake(state.description || '');
       updateRemoteDirection(el.modalTitleInput);
       if (el.modalDescInput) updateRemoteDirection(el.modalDescInput);
       el.editTitleModal.style.display = 'flex';
