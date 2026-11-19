@@ -19,6 +19,7 @@ WizardStyle=modern
 
 [Files]
 Source: "install.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "bridge.ps1"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "SimpleStreamer-Setup.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dock\*"; DestDir: "{app}\dock"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\dock\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

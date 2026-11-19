@@ -4119,19 +4119,19 @@ function startMetricsPolling() {
           }
         } else if (stats.outputActive) {
           const elapsed = Date.now() - (state.streamStartTime || Date.now());
-          if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete' || secDest.cloudStatus === 'error') {
+          if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete') {
             updateCardBadge(secDest.id, 'offline', 'ENDED');
             secDest.isLive = false;
-          } else if (secDest.cloudStatus === 'UNPUBLISHED' && elapsed > 15000) {
+          } else if (secDest.cloudStatus === 'UNPUBLISHED' && elapsed > 20000 && !secDest.isLive) {
             updateCardBadge(secDest.id, 'offline', 'NO VIDEO INGEST');
             secDest.isLive = false;
-          } else if (secDest.cloudStatus === 'OFFLINE' && elapsed > 15000) {
+          } else if (secDest.cloudStatus === 'OFFLINE' && elapsed > 20000 && !secDest.isLive) {
             updateCardBadge(secDest.id, 'offline', 'OFFLINE');
             secDest.isLive = false;
-          } else if (!secStatus && elapsed > 15000 && !secDest.isLive) {
+          } else if (!secStatus && elapsed > 20000 && !secDest.isLive) {
             updateCardBadge(secDest.id, 'offline', 'PLUGIN NOT RUNNING');
             secDest.isLive = false;
-          } else if (elapsed < 8000) {
+          } else if (elapsed < 8000 && !secDest.isLive) {
             updateCardBadge(secDest.id, 'connecting', 'STARTING...');
             secDest.isLive = false;
           } else {
@@ -4152,9 +4152,11 @@ function startMetricsPolling() {
       // 4. Update Header dynamically
       updateLiveHeaderDynamic();
 
-      // 5. Periodic cloud health confirmation (every 9s)
+      // 5. Periodic cloud health confirmation (every 9s during ramp-up, 20s once live)
       const now = Date.now();
-      if (!state.lastCloudPoll || now - state.lastCloudPoll > 9000) {
+      const allLive = state.activeBroadcast.destinations.length > 0 && state.activeBroadcast.destinations.every((d) => d.isLive);
+      const pollInterval = allLive ? 20000 : 9000;
+      if (!state.lastCloudPoll || now - state.lastCloudPoll > pollInterval) {
         state.lastCloudPoll = now;
         pollCloudStatus();
       }
@@ -4196,20 +4198,27 @@ async function pollCloudStatus() {
     const data = await res.json();
 
     if (activeFB && data.facebook) {
-      activeFB.cloudStatus = data.facebook.status;
       const elapsed = Date.now() - (state.streamStartTime || Date.now());
       if (data.facebook.isLive) {
         activeFB.isLive = true;
+        activeFB.cloudStatus = data.facebook.status;
         updateCardBadge(activeFB.id, 'live', 'LIVE');
       } else if (data.facebook.status === 'VOD' || data.facebook.status === 'ENDED') {
         activeFB.isLive = false;
+        activeFB.cloudStatus = data.facebook.status;
         updateCardBadge(activeFB.id, 'offline', 'ENDED');
-      } else if (data.facebook.status === 'UNPUBLISHED' && elapsed > 15000) {
-        activeFB.isLive = false;
-        updateCardBadge(activeFB.id, 'offline', 'NO VIDEO INGEST');
+      } else if (data.facebook.status === 'UNPUBLISHED' && elapsed > 20000) {
+        if (!activeFB.isLive) {
+          activeFB.cloudStatus = 'UNPUBLISHED';
+          updateCardBadge(activeFB.id, 'offline', 'NO VIDEO INGEST');
+        }
       } else if (data.facebook.status === 'ERROR' || data.facebook.error) {
-        activeFB.isLive = false;
-        updateCardBadge(activeFB.id, 'offline', 'ERROR');
+        logDiag(`Facebook Graph API notice: ${data.facebook.error || data.facebook.status}`);
+        // Transient Graph API check error must never tear down or flap a stream that OBS confirms is transmitting!
+        if (!activeFB.isLive) {
+          activeFB.cloudStatus = 'error';
+          updateCardBadge(activeFB.id, 'offline', 'ERROR');
+        }
       }
     }
 
