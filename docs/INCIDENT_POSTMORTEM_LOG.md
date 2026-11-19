@@ -380,3 +380,35 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
    - In `dock/app.js`, once all destinations are confirmed live, cloud status polling backs off from 9s to 20s to prevent hitting Meta Graph API rate limits during long broadcasts.
 
 
+
+
+## 18. Multi-Layer Mojibake of Arabic Text in Metadata Fields (Query String ANSI Decoding & Bidirectional Sync Loop)
+
+### What Happened
+- When entering Arabic text into the title or description inputs on the OBS dock (e.g., `د. يحي بن صالح طباخ - درس بعنوان...`), the text was consistently replaced by long strings of garbled Latin characters like `ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â¯. ÃƒÆ’Ã¢â€žÂ¢Ãƒâ€¦Ã‚Â ...`.
+
+### Root Causes
+1. **Query String ANSI Decoding in .NET HttpListener**:
+   - `dock/app.js` synchronized title updates using `GET /save-title?title=${encodeURIComponent(title)}...`.
+   - In Windows PowerShell 5.1 / .NET Framework 4.8, `HttpListenerRequest.QueryString` decodes percent-encoded query parameters using the system default ANSI code page (Windows-1252 on French/English Windows) rather than UTF-8.
+   - Each 2-byte Arabic UTF-8 character (such as `0xD8 0xAF` for `د`) was parsed as two individual ANSI characters (`Ø¯`).
+2. **Aggressive Bidirectional Polling Overwrite**:
+   - Every 1.5 seconds, the dock's background loop polled `/remote-config`.
+   - When the operator paused typing (`!isTypingTitle`), the dock checked `if (cfg.title !== titleEl.value)` and clobbered the user's input box with the corrupted string returned by the bridge.
+3. **Exponential Cascading Mojibake**:
+   - When the user attempted to edit or correct the title, the corrupted string was re-sent through the ANSI query string decoder, compounding `Ø¯` into `Ã˜Â¯` (Round 2) and `ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â¯` (Rounds 3 and 4).
+4. **Unsafe String Chunk Concatenation in Node.js**:
+   - In `backend/src/index.mjs`, `parseJsonBody` used `body += chunk` on incoming Buffer events, which can split multi-byte UTF-8 sequences across packet boundaries.
+
+### Permanent Patches Implemented
+1. **POST JSON Metadata Persistence**:
+   - `syncMetadataToBridgeAndRemote()` in `dock/app.js` and `dock/remote.html` now transmits metadata via `POST /save-title` with `Content-Type: application/json; charset=utf-8` and `{ title, description }`, entirely bypassing URL query string decoding.
+2. **UTF-8 Decoding for Query Fallback**:
+   - In `bridge.ps1` and `install.ps1`, GET requests now decode query parameters using `[System.Net.WebUtility]::UrlDecode()`, strictly enforcing UTF-8 decoding.
+3. **Mojibake Detection and Ingest Protection**:
+   - Added `cleanMojibake()` and `isLikelyMojibake()` guards in `dock/app.js` to automatically heal historical Mojibake and prevent corrupted strings from overwriting valid user-entered Arabic text.
+4. **Binary-Safe Buffer Concatenation**:
+   - Updated `parseJsonBody` in `backend/src/index.mjs` to buffer raw data chunks and decode via `Buffer.concat(chunks).toString('utf8')`.
+
+
+
