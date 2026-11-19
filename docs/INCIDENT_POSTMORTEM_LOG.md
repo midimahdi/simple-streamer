@@ -469,4 +469,64 @@ Single destination to YouTube succeeded. When both Facebook and YouTube were sel
 
 
 
+## 21. Cross-Platform mDNS Resolution Failure on Windows Networks & Hardcoded Hostnames
+
+### What Happened
+- After gating macOS mDNS advertising by OBS liveness, visiting `http://simple-streamer.local:45455/remote` broke completely on the local Wi-Fi with `DNS_PROBE_FINISHED_NXDOMAIN` ("cannot load page / unknown host").
+
+### Root Causes
+1. **Windows Does Not Register Custom mDNS Aliases Out of the Box**:
+   - Unlike macOS Bonjour (`dns-sd`), Windows 10/11 only advertises its native NetBIOS hostname (`<computername>.local`). It does not answer queries for arbitrary synthetic hostnames like `simple-streamer.local`.
+   - The only reason `simple-streamer.local` had ever resolved on the network was that the user's MacBook Air happened to be advertising it via macOS Bonjour.
+   - When the Mac bridge stopped advertising while OBS was closed, `simple-streamer.local` vanished from the network.
+2. **OBS Dock UI Hardcoding**:
+   - `dock/index.html` and `dock/app.js` hardcoded `simple-streamer.local` as the fallback URL rather than resolving the machine's actual native hostname.
+
+### Permanent Architectural Fixes
+1. **Dynamic Machine mDNS Resolution in OBS Dock**:
+   - Updated `dock/app.js` and `backend/dock/app.js`: dynamically queries `/remote-config` for `machineName`, sanitizes it (`machineName.toLowerCase().replace(/[^a-z0-9-]/g, '')`), and displays the machine's native `http://<computername>.local:45455/remote` link.
+   - Cleared static placeholder text in `dock/index.html` to eliminate confusing suggestions.
+
+
+
+
+## 22. Cloud Run Static Asset 302 Infinite Redirect Loop on `/remote.html`
+
+### What Happened
+- Background bridge daemons and automated scripts attempting to download the raw HTML asset (`https://simple-streamer.bdjlmn.com/remote.html`) received an HTTP 302 redirect back to the local rig IP (`http://192.168.8.100:45455/remote`), bouncing into an infinite loop and preventing disk cache refresh.
+
+### Root Causes
+1. **Over-Broad Presence Redirect Matching**:
+   - In `backend/src/index.mjs`, `ENABLE_PRESENCE_REDIRECT` matched both `/remote` and `/remote.html`.
+   - The route was intended for human mobile browsers navigating to `/remote`, but intercepted asset requests for `/remote.html` as well.
+
+### Permanent Architectural Fixes
+1. **Scoped Presence Redirection**:
+   - Restricted presence routing in `backend/src/index.mjs` strictly to `pathname === '/remote'` and `pathname === '/remote/'`.
+   - Requests for `/remote.html` fall through directly to static asset serving, returning HTTP 200 OK with `Content-Type: text/html; charset=utf-8`.
+   - Deployed to Google Cloud Run (`mosque-stream-orchestrator-00057-jqf`).
+
+
+
+
+## 23. Meta Graph API Facebook Live Publishing Latency vs YouTube
+
+### What Happened
+- Broadcasters observed Facebook Live taking 15–25 seconds to appear visibly on their Facebook Page timeline after clicking "Go Live", even though the dock immediately reported "LIVE" and YouTube appeared almost instantaneously.
+
+### Root Causes
+1. **Meta Live Video Ingest Pipeline & HLS Chunk Packaging**:
+   - Simple Streamer creates the broadcast session via Meta Graph API in ~1 second with `status: 'LIVE_NOW'`.
+   - Secondary output in OBS connects over SSL/TLS (`rtmps://live-api-s.facebook.com:443`) and streams video keyframes (GOPs).
+   - Facebook does not publish the video post to the Page timeline until its ingest pipeline has processed and verified at least two complete HLS segments (4–6 seconds each).
+2. **Client Feed Caching**:
+   - Facebook web and mobile app feeds cache Page timelines, delaying visual post rendering by an additional 5–10 seconds compared to YouTube's player.
+
+### Findings & Verification
+- Verified Cloud Run logs: zero API errors, zero teardown failures (`[Orchestrator] Multi-dest results (SUCCESS): youtube(OK), facebook(OK)`). The 15–25 second publishing latency is standard platform behavior for Meta Live Video.
+
+
+
+
+
 
