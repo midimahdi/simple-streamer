@@ -1268,8 +1268,8 @@ function accountHtml(): string {
                 planTitleEl.style.color = '#94a3b8';
                 planDescEl.innerText = 'Community edition. Stream to multiple platforms with 0% extra CPU directly from OBS.';
                 if (actionArea) {
-                  var lifetimeUrl = 'https://buy.stripe.com/test_8x200jdrw4dF03WgSM5EY01?client_reference_id=' + encodeURIComponent(currentUser.id) + '&prefilled_email=' + encodeURIComponent(currentUser.email || '');
-                  var annualUrl = 'https://buy.stripe.com/test_fZuaEXafk39B03W6e85EY02?client_reference_id=' + encodeURIComponent(currentUser.id) + '&prefilled_email=' + encodeURIComponent(currentUser.email || '');
+                  var lifetimeUrl = 'https://buy.stripe.com/fZuaEXafk39B03W6e85EY02?client_reference_id=' + encodeURIComponent(currentUser.id) + '&prefilled_email=' + encodeURIComponent(currentUser.email || '');
+                  var annualUrl = 'https://buy.stripe.com/14A4gz2MSbG72c431W5EY00?client_reference_id=' + encodeURIComponent(currentUser.id) + '&prefilled_email=' + encodeURIComponent(currentUser.email || '');
                   actionArea.innerHTML = '<div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;"><a href="' + lifetimeUrl + '" class="btn btn-gold btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">🔥 Claim Lifetime Deal — $5 Once</a><a href="' + annualUrl + '" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">Annual $12/yr</a></div>';
                 }
               }
@@ -1394,7 +1394,7 @@ function accountHtml(): string {
                 window.location.href = '/login';
                 return;
               }
-              var basePaymentUrl = 'https://buy.stripe.com/test_fZuaEXafk39B03W6e85EY02';
+              var basePaymentUrl = 'https://buy.stripe.com/14A4gz2MSbG72c431W5EY00';
               var checkoutUrl = basePaymentUrl + '?client_reference_id=' + encodeURIComponent(user.id) + '&prefilled_email=' + encodeURIComponent(user.email || '');
               window.location.href = checkoutUrl;
             } catch (err) {
@@ -1754,7 +1754,7 @@ function homeHtml(): string {
         Lock in permanent Pro access for a single \$5 payment. No recurring bills. The first 100 broadcasters get lifetime 1-click broadcast creation, unified titles & descriptions across all 4 platforms, mid-stream title & description updates, and mobile cloud remote.
       </p>
       <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center;">
-        <a id="btnFoundingClaim" href="https://buy.stripe.com/test_8x200jdrw4dF03WgSM5EY01" class="btn btn-gold" style="font-size: 16px; padding: 14px 28px;">
+        <a id="btnFoundingClaim" href="https://buy.stripe.com/fZuaEXafk39B03W6e85EY02" class="btn btn-gold" style="font-size: 16px; padding: 14px 28px;">
           ⚡ Claim Lifetime Pass — $5 Once →
         </a>
         <a href="https://github.com/midimahdi/simple-streamer/releases/latest" class="btn btn-secondary">
