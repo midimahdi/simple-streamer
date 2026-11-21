@@ -138,3 +138,60 @@ begin
     Exec('netsh.exe', 'advfirewall firewall add rule name="Simple Streamer Bridge" dir=in action=allow program="' + ExpandConstant('{app}\simple-streamer-bridge.exe') + '" enable=yes profile=any', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
+
+procedure RemoveObsDockFromIni(const IniPath: String);
+var
+  RawContent: AnsiString;
+  Content, Target1, Target2: String;
+begin
+  if not FileExists(IniPath) then Exit;
+  if not LoadStringFromFile(IniPath, RawContent) then Exit;
+  Content := String(RawContent);
+
+  Target1 := '{"title":"Simple Streamer","url":"https://simple-streamer.bdjlmn.com/dock"}';
+  Target2 := '{"title":"Simple Streamer","url":"http://127.0.0.1:45455/dock"}';
+
+  StringChangeEx(Content, Target1 + ',', '', False);
+  StringChangeEx(Content, ',' + Target1, '', False);
+  StringChangeEx(Content, Target1, '', False);
+
+  StringChangeEx(Content, Target2 + ',', '', False);
+  StringChangeEx(Content, ',' + Target2, '', False);
+  StringChangeEx(Content, Target2, '', False);
+
+  SaveStringToFile(IniPath, AnsiString(Content), False);
+end;
+
+function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec('taskkill.exe', '/F /IM simple-streamer-bridge.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM obs64.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := True;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ObsDir, StartupDir: String;
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    ObsDir := ExpandConstant('{userappdata}\obs-studio');
+    if DirExists(ObsDir) then
+    begin
+      RemoveObsDockFromIni(ObsDir + '\global.ini');
+      RemoveObsDockFromIni(ObsDir + '\user.ini');
+      DelTree(ObsDir + '\plugin_config\simple-streamer', True, True, True);
+      DelTree(ObsDir + '\plugins\simple-streamer', True, True, True);
+    end;
+
+    StartupDir := ExpandConstant('{userstartup}');
+    if FileExists(StartupDir + '\SimpleStreamerBridge.lnk') then
+      DeleteFile(StartupDir + '\SimpleStreamerBridge.lnk');
+
+    DelTree(ExpandConstant('{app}'), True, True, True);
+    Exec('netsh.exe', 'advfirewall firewall delete rule name="Simple Streamer Bridge"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;

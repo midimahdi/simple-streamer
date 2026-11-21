@@ -168,6 +168,8 @@ pkgbuild --identifier com.bdjlmn.simple-streamer \
 # 4. Package into .dmg
 mkdir -p "$BUILD_DIR/dmg"
 cp "$BUILD_DIR/SimpleStreamer-Installer.pkg" "$BUILD_DIR/dmg/Install Simple Streamer.pkg"
+cp "$SCRIPT_DIR/Uninstall Simple Streamer.command" "$BUILD_DIR/dmg/Uninstall Simple Streamer.command"
+chmod +x "$BUILD_DIR/dmg/Uninstall Simple Streamer.command"
 
 DMG_OUTPUT="$DIST_DIR/SimpleStreamer-Setup.dmg"
 rm -f "$DMG_OUTPUT"
