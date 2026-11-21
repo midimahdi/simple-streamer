@@ -163,6 +163,15 @@ jobs:
             /link /LIBPATH:obs-libs obs.lib obs-frontend-api.lib ^
             /OUT:plugin\build\x64\simple-streamer.dll
 
+      - name: Compile simple-streamer-bridge.exe (MSVC x64 Static CRT, GUI Subsystem)
+        shell: cmd
+        run: |
+          mkdir dist
+          cl.exe /O2 /MT /W3 ^
+            installer\windows\simple-streamer-bridge.c ^
+            /link /SUBSYSTEM:WINDOWS ws2_32.lib winhttp.lib bcrypt.lib shell32.lib user32.lib advapi32.lib iphlpapi.lib ole32.lib ^
+            /OUT:dist\simple-streamer-bridge.exe
+
       - name: Verify & Assert Zero External Runtime Dependencies
         shell: pwsh
         run: |
@@ -180,7 +189,13 @@ jobs:
             Write-Error "FATAL: DLL is missing expected OBS core or frontend-api imports!"
             exit 1
           }
-          Write-Host "SUCCESS: Import table strictly verified (obs.dll, obs-frontend-api.dll, KERNEL32.dll only)."
+          $bdeps = (dumpbin /DEPENDENTS dist\simple-streamer-bridge.exe | Out-String)
+          Write-Host $bdeps
+          if ($bdeps -match "vcruntime" -or $bdeps -match "msvcp") {
+            Write-Error "FATAL: bridge.exe links against dynamic MSVC runtime! Must compile with /MT."
+            exit 1
+          }
+          Write-Host "SUCCESS: Import tables strictly verified (zero dynamic CRT dependencies)."
 
       - name: Package Windows Release Bundle
         shell: pwsh
@@ -222,6 +237,7 @@ jobs:
             dist/SimpleStreamer-Setup.exe
             dist/SimpleStreamer-Windows-x64.zip
             dist/simple-streamer.dll
+            dist/simple-streamer-bridge.exe
 
   release:
     name: Publish Continuous Release
@@ -243,12 +259,18 @@ jobs:
           name: simple-streamer-windows-x64
           path: release-assets
 
+      - name: Generate SHA-256 Checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create or Update Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Simple Streamer Latest Build
-          body: Continuous build of Simple Streamer native plugins, macOS installer, and Windows .exe installer bundle.
+          body: Continuous build of Simple Streamer native plugins, native Windows C bridge, macOS installer, and Windows .exe installer bundle with SHA-256 checksums.
           draft: false
           prerelease: false
           files: |
