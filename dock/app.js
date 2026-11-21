@@ -1382,8 +1382,9 @@ function toggleRemotePanel() {
 function updateSettingsMenuSubtitles() {
   if (el.settingsDestCountSub) {
     const total = state.destinations.length;
-    const active = state.destinations.filter((d) => d.enabled).length;
-    el.settingsDestCountSub.textContent = total === 0 ? t('noDestinationsTitle') : `${active}/${total} active destinations`;
+    el.settingsDestCountSub.textContent = total === 0
+      ? t('noDestinationsTitle')
+      : `${total} ${total === 1 ? 'destination' : 'destinations'} configured`;
   }
 
   if (currentAccountSession) {

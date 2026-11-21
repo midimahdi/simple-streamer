@@ -50,6 +50,7 @@ var
 begin
   Exec('taskkill.exe', '/F /IM simple-streamer-bridge.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /IM obs64.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('wmic.exe', 'process where "name=''powershell.exe'' and commandline like ''%bridge.ps1%''" call terminate', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := '';
 end;
 
@@ -133,6 +134,8 @@ begin
       DeleteFile(StartupDir + '\SimpleStreamerBridge.lnk');
     if FileExists(ExpandConstant('{app}\bridge.vbs')) then
       DeleteFile(ExpandConstant('{app}\bridge.vbs'));
+    if FileExists(ExpandConstant('{app}\bridge.ps1')) then
+      DeleteFile(ExpandConstant('{app}\bridge.ps1'));
 
     { Allow bridge LAN ports in Windows Firewall if possible (non-fatal) }
     Exec('netsh.exe', 'advfirewall firewall add rule name="Simple Streamer Bridge" dir=in action=allow program="' + ExpandConstant('{app}\simple-streamer-bridge.exe') + '" enable=yes profile=any', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
