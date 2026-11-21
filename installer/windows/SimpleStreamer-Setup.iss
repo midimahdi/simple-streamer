@@ -55,18 +55,20 @@ end;
 
 procedure EnsureObsDockInIni(const IniPath: String);
 var
+  RawContent: AnsiString;
   Content, NewEntry: String;
   P: Integer;
 begin
   if not FileExists(IniPath) then Exit;
-  if not LoadStringFromFile(IniPath, Content) then Exit;
+  if not LoadStringFromFile(IniPath, RawContent) then Exit;
+  Content := String(RawContent);
 
   if Pos('simple-streamer.bdjlmn.com/dock', Content) > 0 then Exit;
 
   if Pos('http://127.0.0.1:45455/dock', Content) > 0 then
   begin
     StringChangeEx(Content, 'http://127.0.0.1:45455/dock', 'https://simple-streamer.bdjlmn.com/dock', True);
-    SaveStringToFile(IniPath, Content, False);
+    SaveStringToFile(IniPath, AnsiString(Content), False);
     Exit;
   end;
 
@@ -87,7 +89,7 @@ begin
     else
       Content := Content + #13#10 + '[BasicWindow]' + #13#10 + 'ExtraBrowserDocks=[' + NewEntry + ']' + #13#10;
   end;
-  SaveStringToFile(IniPath, Content, False);
+  SaveStringToFile(IniPath, AnsiString(Content), False);
 end;
 
 procedure EnsureObsWebSocketConfig(const WsDir: String);
@@ -106,7 +108,7 @@ begin
                '  "server_password": "",' + #13#10 +
                '  "server_port": 4455' + #13#10 +
                '}' + #13#10;
-    SaveStringToFile(CfgPath, Content, False);
+    SaveStringToFile(CfgPath, AnsiString(Content), False);
   end;
 end;
 
