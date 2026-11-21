@@ -316,12 +316,9 @@ static NSDictionary* get_broadcast_state() {
             if (dict) return dict;
         }
         return @{
-            @"title": @"Mosque Live Broadcast",
-            @"description": @"Weekly Lecture from Main Prayer Hall",
-            @"destinations": @[
-                @{ @"name": @"YouTube", @"platform": @"youtube", @"enabled": @YES },
-                @{ @"name": @"Facebook Live", @"platform": @"facebook", @"enabled": @YES }
-            ]
+            @"title": @"",
+            @"description": @"",
+            @"destinations": @[]
         };
     }
 }

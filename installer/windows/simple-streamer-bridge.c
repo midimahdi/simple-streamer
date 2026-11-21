@@ -494,9 +494,9 @@ static void get_or_create_machine_id(char *out, size_t out_sz) {
 /* ---------- Broadcast State Helpers ---------- */
 
 static void load_broadcast_state(char *title, size_t t_sz, char *desc, size_t d_sz, char **dests_json_alloc) {
-    strcpy(title, "Mosque Live Broadcast");
-    strcpy(desc, "Weekly Lecture from Main Prayer Hall");
-    *dests_json_alloc = _strdup("[{\"name\":\"YouTube\",\"platform\":\"youtube\",\"enabled\":true},{\"name\":\"Facebook Live\",\"platform\":\"facebook\",\"enabled\":true}]");
+    title[0] = '\0';
+    desc[0] = '\0';
+    *dests_json_alloc = _strdup("[]");
 
     char bfile[MAX_PATH];
     snprintf(bfile, sizeof(bfile), "%s\\broadcast_state.json", g_obs_plugin_dir);

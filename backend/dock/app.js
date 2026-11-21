@@ -4975,6 +4975,13 @@ function initEvents() {
  * Detects and heals multi-round UTF-8 / Windows-1252 / ISO-8859-1 Mojibake
  * (e.g. Arabic text corrupted by legacy query string ANSI decoding)
  */
+function stripLegacyMosqueDefault(str, isDesc = false) {
+  if (!str) return '';
+  if (!isDesc && str === 'Mosque Live Broadcast') return '';
+  if (isDesc && str === 'Weekly Lecture from Main Prayer Hall') return '';
+  return str;
+}
+
 function cleanMojibake(str) {
   if (!str || typeof str !== 'string') return str;
   if (!/[ÃØÙ]/.test(str)) return str;
@@ -5086,7 +5093,7 @@ function isLikelyMojibake(incoming, currentLocal) {
       let finalDesc = descEl ? descEl.value : '';
 
       if (titleEl && (!titleEl.value || titleEl.value.includes('[object')) && cfg.title && !cfg.title.includes('[object')) {
-        const cleanedTitle = cleanMojibake(cfg.title);
+        const cleanedTitle = stripLegacyMosqueDefault(cleanMojibake(cfg.title), false);
         if (!isLikelyMojibake(cleanedTitle, '')) {
           titleEl.value = cleanedTitle;
           finalTitle = cleanedTitle;
@@ -5097,7 +5104,7 @@ function isLikelyMojibake(incoming, currentLocal) {
         }
       }
       if (descEl && (!descEl.value || descEl.value.includes('[object')) && cfg.description !== undefined && !cfg.description.includes('[object')) {
-        const cleanedDesc = cleanMojibake(cfg.description);
+        const cleanedDesc = stripLegacyMosqueDefault(cleanMojibake(cfg.description), true);
         if (!isLikelyMojibake(cleanedDesc, '')) {
           descEl.value = cleanedDesc;
           finalDesc = cleanedDesc;
@@ -5138,7 +5145,7 @@ function isLikelyMojibake(incoming, currentLocal) {
         let healDesc = descEl ? descEl.value : '';
 
         if (!isTypingTitle && titleEl && cfg.title !== undefined && !cfg.title.includes('[object')) {
-          const incomingTitle = cleanMojibake(cfg.title);
+          const incomingTitle = stripLegacyMosqueDefault(cleanMojibake(cfg.title), false);
           if (incomingTitle !== titleEl.value && !isLikelyMojibake(incomingTitle, titleEl.value)) {
             titleEl.value = incomingTitle;
             healTitle = incomingTitle;
@@ -5149,7 +5156,7 @@ function isLikelyMojibake(incoming, currentLocal) {
           }
         }
         if (!isTypingDesc && descEl && cfg.description !== undefined && !cfg.description.includes('[object')) {
-          const incomingDesc = cleanMojibake(cfg.description);
+          const incomingDesc = stripLegacyMosqueDefault(cleanMojibake(cfg.description), true);
           if (incomingDesc !== descEl.value && !isLikelyMojibake(incomingDesc, descEl.value)) {
             descEl.value = incomingDesc;
             healDesc = incomingDesc;

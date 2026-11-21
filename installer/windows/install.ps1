@@ -272,12 +272,9 @@ function Get-BroadcastState {
         } catch {}
     }
     return @{
-        title = "Mosque Live Broadcast"
-        description = "Weekly Lecture from Main Prayer Hall"
-        destinations = @(
-            @{ name = "YouTube"; platform = "youtube"; enabled = $true },
-            @{ name = "Facebook Live"; platform = "facebook"; enabled = $true }
-        )
+        title = ""
+        description = ""
+        destinations = @()
     }
 }
 
@@ -535,7 +532,7 @@ while ($listener.IsListening) {
 
             $cfgFile = "$env:APPDATA\obs-studio\plugin_config\simple-streamer\config.json"
             $bState = Get-BroadcastState
-            $bTitle = if ($bState.title) { $bState.title } else { "Mosque Live Broadcast" }
+            $bTitle = if ($bState.title) { $bState.title } else { "" }
             $bDesc = if ($bState.description) { $bState.description } else { "" }
             $bDest = if ($bState.destinations) { $bState.destinations } else { @() }
             if (Test-Path $cfgFile) {
