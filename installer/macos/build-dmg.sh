@@ -31,6 +31,7 @@ mkdir -p "$SCRIPT_DIR/bin"
 chmod +x "$BIN_SOURCE"
 codesign --force --deep -s - -i com.bdjlmn.simple-streamer "$BIN_SOURCE" 2>/dev/null || true
 cp "$BIN_SOURCE" "$BUILD_DIR/scripts/simple-streamer-bridge"
+cp "$SCRIPT_DIR/Uninstall Simple Streamer.command" "$BUILD_DIR/scripts/Uninstall Simple Streamer.command"
 
 # 3. Create postinstall script
 cat << 'EOF' > "$BUILD_DIR/scripts/postinstall"
@@ -95,6 +96,10 @@ fi
 
 cp -f "$SCRIPT_DIR/simple-streamer-bridge" "${BIN_DIR}/simple-streamer-bridge"
 chmod +x "${BIN_DIR}/simple-streamer-bridge"
+if [ -f "$SCRIPT_DIR/Uninstall Simple Streamer.command" ]; then
+    cp -f "$SCRIPT_DIR/Uninstall Simple Streamer.command" "${USER_HOME}/.simple-streamer/Uninstall Simple Streamer.command"
+    chmod +x "${USER_HOME}/.simple-streamer/Uninstall Simple Streamer.command"
+fi
 chown -R "${CONSOLE_USER}" "${USER_HOME}/.simple-streamer"
 
 cat << PLIST_EOF > "${PLIST_PATH}"

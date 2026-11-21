@@ -579,6 +579,28 @@ static void handle_client(int client_fd, struct sockaddr_in client_addr) {
                                        "Content-Length: 15\r\n\r\n"
                                        "{\"status\":\"ok\"}";
                     write_all(client_fd, resp, strlen(resp));
+                } else if ([request containsString:@"/open-uninstaller"]) {
+                    NSString *uninsPath = [NSHomeDirectory() stringByAppendingPathComponent:@".simple-streamer/Uninstall Simple Streamer.command"];
+                    NSFileManager *fm = [NSFileManager defaultManager];
+                    BOOL found = [fm fileExistsAtPath:uninsPath];
+                    NSTask *t = [[NSTask alloc] init];
+                    t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/open"];
+                    if (found) {
+                        t.arguments = @[@"-R", uninsPath];
+                    } else {
+                        NSString *dirPath = [NSHomeDirectory() stringByAppendingPathComponent:@".simple-streamer"];
+                        t.arguments = @[dirPath];
+                    }
+                    @try { [t launchAndReturnError:nil]; } @catch (NSException *e) {}
+                    const char *bodyStr = found ? "{\"ok\":true,\"found\":true}" : "{\"ok\":true,\"found\":false}";
+                    char hdr[256];
+                    int hlen = snprintf(hdr, sizeof(hdr),
+                        "HTTP/1.1 200 OK\r\n"
+                        "Access-Control-Allow-Origin: *\r\n"
+                        "Access-Control-Allow-Private-Network: true\r\n"
+                        "Content-Type: application/json\r\n"
+                        "Content-Length: %zu\r\n\r\n%s", strlen(bodyStr), bodyStr);
+                    write_all(client_fd, hdr, (size_t)hlen);
                 } else if ([request containsString:@"/save-auth"]) {
                     NSString *token = @"";
                     NSRange lineEnd = [request rangeOfString:@"\r\n"];

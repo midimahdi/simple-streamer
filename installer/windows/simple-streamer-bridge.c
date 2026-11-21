@@ -746,6 +746,25 @@ static void handle_http_client(SOCKET c) {
     } else if (strcmp(path, "/focus-obs") == 0) {
         focus_obs_window();
         send_http(c, 200, "OK", "application/json", NULL, "{\"ok\":true}", 11);
+    } else if (strcmp(path, "/open-uninstaller") == 0) {
+        char unins_path[MAX_PATH];
+        snprintf(unins_path, sizeof(unins_path), "%s\\unins000.exe", g_bridge_dir);
+        BOOL found = file_exists_utf8(unins_path);
+        WCHAR wargs[MAX_PATH + 32];
+        if (found) {
+            WCHAR wpath[MAX_PATH];
+            if (MultiByteToWideChar(CP_UTF8, 0, unins_path, -1, wpath, MAX_PATH)) {
+                swprintf(wargs, MAX_PATH + 32, L"/select,\"%s\"", wpath);
+                ShellExecuteW(NULL, L"open", L"explorer.exe", wargs, NULL, SW_SHOWNORMAL);
+            }
+            send_http(c, 200, "OK", "application/json", NULL, "{\"ok\":true,\"found\":true}", 24);
+        } else {
+            WCHAR wdir[MAX_PATH];
+            if (MultiByteToWideChar(CP_UTF8, 0, g_bridge_dir, -1, wdir, MAX_PATH)) {
+                ShellExecuteW(NULL, L"open", L"explorer.exe", wdir, NULL, SW_SHOWNORMAL);
+            }
+            send_http(c, 200, "OK", "application/json", NULL, "{\"ok\":true,\"found\":false}", 25);
+        }
     } else if (strcmp(path, "/obs-config") == 0) {
         char pass[256];
         int port = 4455;

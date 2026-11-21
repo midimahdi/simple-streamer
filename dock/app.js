@@ -131,6 +131,8 @@ const el = {
   obsWsEndpointDisplay: document.getElementById('obsWsEndpointDisplay'),
   btnReconnectObsSettings: document.getElementById('btnReconnectObsSettings'),
   btnResetLocalData: document.getElementById('btnResetLocalData'),
+  btnOpenUninstaller: document.getElementById('btnOpenUninstaller'),
+  uninstallFallbackHint: document.getElementById('uninstallFallbackHint'),
 
   // Account & License UI
   btnHeaderAccount: document.getElementById('btnHeaderAccount'),
@@ -4642,6 +4644,29 @@ function initEvents() {
   }
   if (el.btnResetLocalData) {
     el.btnResetLocalData.onclick = () => resetAllLocalState();
+  }
+  if (el.btnOpenUninstaller) {
+    el.btnOpenUninstaller.onclick = async () => {
+      const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+      const fallbackMsg = isMac
+        ? 'Run "Uninstall Simple Streamer.command" inside SimpleStreamer-Setup.dmg (or ~/.simple-streamer/).'
+        : 'Open Windows Settings → Apps → Simple Streamer to uninstall cleanly.';
+      try {
+        const res = await fetch('http://127.0.0.1:45455/open-uninstaller', { mode: 'cors' });
+        const data = await res.json().catch(() => ({}));
+        if (el.uninstallFallbackHint) {
+          el.uninstallFallbackHint.style.display = 'block';
+          el.uninstallFallbackHint.textContent = data.found
+            ? (isMac ? 'Opened Finder with Uninstall Simple Streamer.command selected.' : 'Opened Explorer with unins000.exe selected.')
+            : fallbackMsg;
+        }
+      } catch (_) {
+        if (el.uninstallFallbackHint) {
+          el.uninstallFallbackHint.style.display = 'block';
+          el.uninstallFallbackHint.textContent = fallbackMsg;
+        }
+      }
+    };
   }
 
   // Account & Device Entitlement Verification
