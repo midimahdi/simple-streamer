@@ -132,6 +132,9 @@ begin
     StartupDir := ExpandConstant('{userstartup}');
     if FileExists(StartupDir + '\SimpleStreamerBridge.lnk') then
       DeleteFile(StartupDir + '\SimpleStreamerBridge.lnk');
+
+    if FileExists('C:\Program Files\obs-studio\obs-plugins\64bit\simple-streamer.dll') then
+      DeleteFile('C:\Program Files\obs-studio\obs-plugins\64bit\simple-streamer.dll');
     if FileExists(ExpandConstant('{app}\bridge.vbs')) then
       DeleteFile(ExpandConstant('{app}\bridge.vbs'));
     if FileExists(ExpandConstant('{app}\bridge.ps1')) then
@@ -193,6 +196,9 @@ begin
     StartupDir := ExpandConstant('{userstartup}');
     if FileExists(StartupDir + '\SimpleStreamerBridge.lnk') then
       DeleteFile(StartupDir + '\SimpleStreamerBridge.lnk');
+
+    if FileExists('C:\Program Files\obs-studio\obs-plugins\64bit\simple-streamer.dll') then
+      DeleteFile('C:\Program Files\obs-studio\obs-plugins\64bit\simple-streamer.dll');
 
     DelTree(ExpandConstant('{app}'), True, True, True);
     Exec('netsh.exe', 'advfirewall firewall delete rule name="Simple Streamer Bridge"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
