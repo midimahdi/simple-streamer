@@ -145,10 +145,10 @@ export async function getFacebookLiveStatus(liveVideoId, accessToken = process.e
     const data = await res.json();
     const fbStatus = data.status; // LIVE, LIVE_NOW, UNPUBLISHED, VOD
     const healthStatus = data.stream_health?.status;
-    const isLive = fbStatus === 'LIVE' || fbStatus === 'LIVE_NOW' || healthStatus === 'GOOD' || healthStatus === 'OK';
+    const isLive = fbStatus === 'LIVE' || healthStatus === 'GOOD' || healthStatus === 'OK';
     return {
       isLive,
-      status: fbStatus || 'UNKNOWN',
+      status: fbStatus === 'LIVE_NOW' && !isLive ? 'WAITING_FOR_VIDEO' : (fbStatus || 'UNKNOWN'),
       health: healthStatus,
       liveViews: data.live_views,
     };

@@ -3433,6 +3433,26 @@ async function handleGoLive() {
     return;
   }
 
+  // Pre-flight check: multi-destination streaming requires the local bridge (:45455) to configure secondary outputs
+  if (enabledTargets.length > 1) {
+    let bridgeAlive = false;
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 1500);
+      const bRes = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors', signal: ctrl.signal });
+      clearTimeout(tid);
+      bridgeAlive = bRes.ok;
+    } catch (_) {}
+    if (!bridgeAlive) {
+      logDiag('Blocked Go Live: Local bridge (127.0.0.1:45455) is offline with 2+ destinations enabled.');
+      showAlert(
+        'LOCAL BRIDGE NOT RUNNING',
+        'Simple Streamer Bridge (port 45455) is not running, so secondary destinations cannot stream. Start Simple Streamer Bridge (or re-run the installer) and try again.'
+      );
+      return;
+    }
+  }
+
   state.isPreparing = true;
   setStatus('PREPARING...', 'preparing');
   el.actionBtn.disabled = true;
@@ -3634,10 +3654,11 @@ async function handleGoLive() {
 
   // 2. Secondary Outputs configured in C native plugin via local bridge
   const secondaries = successfulDests.slice(1);
+  let bridgeSaveError = null;
   if (secondaries.length > 0) {
     logDiag(`Configuring ${secondaries.length} secondary output(s) in native plugin...`);
     try {
-      await fetch('http://127.0.0.1:45455/save-destinations', {
+      const saveRes = await fetch('http://127.0.0.1:45455/save-destinations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3658,8 +3679,13 @@ async function handleGoLive() {
         }),
         mode: 'cors',
       });
+      if (!saveRes.ok) bridgeSaveError = `Bridge returned HTTP ${saveRes.status}`;
     } catch (e) {
-      logDiag(`Secondary bridge notice: ${e.message}`);
+      bridgeSaveError = e.message || 'Local bridge unreachable';
+      logDiag(`Secondary bridge error: ${bridgeSaveError}`);
+    }
+    if (bridgeSaveError) {
+      showAlert('SECONDARY OUTPUTS FAILED', `Local bridge error (${bridgeSaveError}). Secondary destinations will not transmit.`);
     }
   } else {
     // Disable and disarm secondary plugin if only 1 target
@@ -3673,12 +3699,14 @@ async function handleGoLive() {
 
   // 3. Populate state.activeBroadcast BEFORE triggering OBS start so that any
   // instantaneous StreamStateChanged events have immediate access to destination cards.
+  const primarySuccessId = successfulDests[0]?.id;
   state.activeBroadcast = {
     title,
     description,
     destinations: returnedDests.map((d) => {
       const original = enabledTargets.find((t) => t.id === d.id);
       const creds = { ...(original?.credentials || {}), ...(original || {}) };
+      const isSecondaryFailure = d.ok && d.id !== primarySuccessId && Boolean(bridgeSaveError);
       return {
         ...creds,
         ...d,
@@ -3687,8 +3715,8 @@ async function handleGoLive() {
         pageId: creds.pageId || d.pageId,
         name: d.name || original?.name || d.platform.toUpperCase(),
         isLive: false,
-        status: d.ok ? 'starting' : 'failed',
-        errorMessage: d.error || null,
+        status: isSecondaryFailure ? 'failed' : (d.ok ? 'starting' : 'failed'),
+        errorMessage: isSecondaryFailure ? bridgeSaveError : (d.error || null),
       };
     }),
   };
@@ -4122,6 +4150,7 @@ function startMetricsPolling() {
         }
 
         if (secStatus && secStatus.outputActive) {
+          secDest.localOutputActive = true;
           if (secStatus.outputReconnecting) {
             updateCardBadge(secDest.id, 'reconnecting', 'RECONNECT');
             secDest.isLive = false;
@@ -4130,34 +4159,33 @@ function startMetricsPolling() {
             secDest.isLive = true;
           }
         } else if (stats.outputActive) {
+          secDest.localOutputActive = false;
+          secDest.isLive = false;
           const elapsed = Date.now() - (state.streamStartTime || Date.now());
-          if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete') {
+          if (secDest.status === 'failed') {
+            updateCardBadge(secDest.id, 'offline', 'FAILED');
+          } else if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete') {
             updateCardBadge(secDest.id, 'offline', 'ENDED');
-            secDest.isLive = false;
-          } else if (secDest.cloudStatus === 'UNPUBLISHED' && elapsed > 20000 && !secDest.isLive) {
+          } else if ((secDest.cloudStatus === 'UNPUBLISHED' || secDest.cloudStatus === 'WAITING_FOR_VIDEO') && elapsed > 20000) {
             updateCardBadge(secDest.id, 'offline', 'NO VIDEO INGEST');
-            secDest.isLive = false;
-          } else if (secDest.cloudStatus === 'OFFLINE' && elapsed > 20000 && !secDest.isLive) {
+          } else if (secDest.cloudStatus === 'OFFLINE' && elapsed > 20000) {
             updateCardBadge(secDest.id, 'offline', 'OFFLINE');
-            secDest.isLive = false;
-          } else if (!secStatus && elapsed > 20000 && !secDest.isLive) {
+          } else if (!secStatus && elapsed > 20000) {
             updateCardBadge(secDest.id, 'offline', 'PLUGIN NOT RUNNING');
-            secDest.isLive = false;
-          } else if (elapsed < 8000 && !secDest.isLive) {
-            updateCardBadge(secDest.id, 'connecting', 'STARTING...');
-            secDest.isLive = false;
+          } else if (secStatus && !secStatus.outputActive && elapsed > 20000) {
+            updateCardBadge(secDest.id, 'offline', 'NOT TRANSMITTING');
           } else {
-            updateCardBadge(secDest.id, 'live', 'LIVE');
-            secDest.isLive = true;
+            updateCardBadge(secDest.id, 'connecting', 'STARTING...');
           }
         } else {
+          secDest.localOutputActive = false;
+          secDest.isLive = false;
           const elapsed = Date.now() - (state.streamStartTime || Date.now());
           if (elapsed < 6000) {
             updateCardBadge(secDest.id, 'connecting', 'STARTING...');
           } else {
             updateCardBadge(secDest.id, 'offline', 'OFFLINE');
           }
-          secDest.isLive = false;
         }
       }
 
@@ -4211,7 +4239,9 @@ async function pollCloudStatus() {
 
     if (activeFB && data.facebook) {
       const elapsed = Date.now() - (state.streamStartTime || Date.now());
-      if (data.facebook.isLive) {
+      const isSecondaryFB = state.activeBroadcast.destinations.indexOf(activeFB) > 0;
+      const localOk = !isSecondaryFB || activeFB.localOutputActive === true;
+      if (data.facebook.isLive && localOk) {
         activeFB.isLive = true;
         activeFB.cloudStatus = data.facebook.status;
         updateCardBadge(activeFB.id, 'live', 'LIVE');
@@ -4219,11 +4249,10 @@ async function pollCloudStatus() {
         activeFB.isLive = false;
         activeFB.cloudStatus = data.facebook.status;
         updateCardBadge(activeFB.id, 'offline', 'ENDED');
-      } else if (data.facebook.status === 'UNPUBLISHED' && elapsed > 20000) {
-        if (!activeFB.isLive) {
-          activeFB.cloudStatus = 'UNPUBLISHED';
-          updateCardBadge(activeFB.id, 'offline', 'NO VIDEO INGEST');
-        }
+      } else if ((data.facebook.status === 'UNPUBLISHED' || data.facebook.status === 'WAITING_FOR_VIDEO') && elapsed > 20000) {
+        activeFB.isLive = false;
+        activeFB.cloudStatus = data.facebook.status;
+        updateCardBadge(activeFB.id, 'offline', 'NO VIDEO INGEST');
       } else if (data.facebook.status === 'ERROR' || data.facebook.error) {
         logDiag(`Facebook Graph API notice: ${data.facebook.error || data.facebook.status}`);
         // Transient Graph API check error must never tear down or flap a stream that OBS confirms is transmitting!
