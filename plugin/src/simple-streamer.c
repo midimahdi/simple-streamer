@@ -1,3 +1,23 @@
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <util/platform.h>
@@ -273,9 +293,140 @@ static void on_frontend_event(enum obs_frontend_event event, void *private_data)
 	}
 }
 
+static bool is_bridge_listening(void)
+{
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(45455);
+	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+#ifdef _WIN32
+	WSADATA wsa;
+	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+		return false;
+
+	SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock == INVALID_SOCKET) {
+		WSACleanup();
+		return false;
+	}
+
+	u_long nonblock = 1;
+	ioctlsocket(sock, FIONBIO, &nonblock);
+	int rc = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+	bool connected = (rc == 0);
+	if (!connected && WSAGetLastError() == WSAEWOULDBLOCK) {
+		fd_set wfds;
+		struct timeval tv = {0, 150000};
+		FD_ZERO(&wfds);
+		FD_SET(sock, &wfds);
+		if (select(0, NULL, &wfds, NULL, &tv) > 0) {
+			int err = 0;
+			int len = sizeof(err);
+			if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&err, &len) == 0 && err == 0)
+				connected = true;
+		}
+	}
+	closesocket(sock);
+	WSACleanup();
+	return connected;
+#else
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock < 0)
+		return false;
+
+	int flags = fcntl(sock, F_GETFL, 0);
+	if (flags >= 0)
+		fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+	int rc = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+	bool connected = (rc == 0);
+	if (!connected && errno == EINPROGRESS) {
+		fd_set wfds;
+		struct timeval tv = {0, 150000};
+		FD_ZERO(&wfds);
+		FD_SET(sock, &wfds);
+		if (select(sock + 1, NULL, &wfds, NULL, &tv) > 0) {
+			int err = 0;
+			socklen_t len = sizeof(err);
+			if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &err, &len) == 0 && err == 0)
+				connected = true;
+		}
+	}
+	close(sock);
+	return connected;
+#endif
+}
+
+static void ensure_bridge_running(void)
+{
+	if (is_bridge_listening())
+		return;
+
+#ifdef _WIN32
+	char exe_path[MAX_PATH] = {0};
+	char dir_path[MAX_PATH] = {0};
+	if (ExpandEnvironmentStringsA("%LOCALAPPDATA%\\SimpleStreamer\\simple-streamer-bridge.exe", exe_path, sizeof(exe_path)) == 0)
+		return;
+	if (ExpandEnvironmentStringsA("%LOCALAPPDATA%\\SimpleStreamer", dir_path, sizeof(dir_path)) == 0)
+		return;
+	if (GetFileAttributesA(exe_path) == INVALID_FILE_ATTRIBUTES) {
+		blog(LOG_WARNING, "[SimpleStreamer] Bridge binary not found at %s", exe_path);
+		return;
+	}
+
+	STARTUPINFOA si;
+	PROCESS_INFORMATION pi;
+	memset(&si, 0, sizeof(si));
+	memset(&pi, 0, sizeof(pi));
+	si.cb = sizeof(si);
+	si.dwFlags = STARTF_USESHOWWINDOW;
+	si.wShowWindow = SW_HIDE;
+
+	if (CreateProcessA(exe_path, NULL, NULL, NULL, FALSE,
+			   CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, dir_path, &si, &pi)) {
+		CloseHandle(pi.hProcess);
+		CloseHandle(pi.hThread);
+		blog(LOG_INFO, "[SimpleStreamer] Auto-launched local bridge: %s", exe_path);
+	} else {
+		blog(LOG_WARNING, "[SimpleStreamer] Failed to auto-launch local bridge (err=%lu)", GetLastError());
+	}
+#else
+	const char *home = getenv("HOME");
+	if (!home || !home[0])
+		return;
+
+	char bin_path[1024];
+	snprintf(bin_path, sizeof(bin_path), "%s/.simple-streamer/bin/simple-streamer-bridge", home);
+	if (access(bin_path, X_OK) != 0) {
+		blog(LOG_WARNING, "[SimpleStreamer] Bridge binary not found at %s", bin_path);
+		return;
+	}
+
+	pid_t pid = fork();
+	if (pid == 0) {
+		setsid();
+		int devnull = open("/dev/null", O_RDWR);
+		if (devnull >= 0) {
+			dup2(devnull, STDIN_FILENO);
+			dup2(devnull, STDOUT_FILENO);
+			dup2(devnull, STDERR_FILENO);
+			if (devnull > STDERR_FILENO)
+				close(devnull);
+		}
+		execl(bin_path, bin_path, (char *)NULL);
+		_exit(127);
+	} else if (pid > 0) {
+		blog(LOG_INFO, "[SimpleStreamer] Auto-launched local bridge: %s (pid=%d)", bin_path, (int)pid);
+	}
+#endif
+}
+
 static void open_mobile_remote_action(void *data)
 {
 	UNUSED_PARAMETER(data);
+	ensure_bridge_running();
 #if defined(__APPLE__)
 	system("/usr/bin/open 'http://127.0.0.1:45455/remote' &");
 #elif defined(_WIN32)
@@ -288,6 +439,7 @@ static void open_mobile_remote_action(void *data)
 static void open_studio_dock_action(void *data)
 {
 	UNUSED_PARAMETER(data);
+	ensure_bridge_running();
 #if defined(__APPLE__)
 	system("/usr/bin/open 'http://127.0.0.1:45455/dock' &");
 #elif defined(_WIN32)
@@ -300,6 +452,7 @@ static void open_studio_dock_action(void *data)
 bool obs_module_load(void)
 {
 	blog(LOG_INFO, "[SimpleStreamer] Multi-Output Plugin loaded (version 2.2.0)");
+	ensure_bridge_running();
 	obs_frontend_add_event_callback(on_frontend_event, NULL);
 	obs_frontend_add_tools_menu_item("Simple Streamer: Open Mobile Remote", open_mobile_remote_action, NULL);
 	obs_frontend_add_tools_menu_item("Simple Streamer: Open Studio Dock", open_studio_dock_action, NULL);

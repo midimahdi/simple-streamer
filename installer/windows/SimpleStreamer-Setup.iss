@@ -42,6 +42,7 @@ Name: "{group}\Uninstall Simple Streamer"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{app}\simple-streamer-bridge.exe"; Description: "Start Simple Streamer Local Bridge"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\simple-streamer-bridge.exe"; Flags: nowait skipifnotsilent
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -196,6 +197,8 @@ begin
     StartupDir := ExpandConstant('{userstartup}');
     if FileExists(StartupDir + '\SimpleStreamerBridge.lnk') then
       DeleteFile(StartupDir + '\SimpleStreamerBridge.lnk');
+    if FileExists(StartupDir + '\Simple Streamer Bridge.lnk') then
+      DeleteFile(StartupDir + '\Simple Streamer Bridge.lnk');
 
     if FileExists('C:\Program Files\obs-studio\obs-plugins\64bit\simple-streamer.dll') then
       DeleteFile('C:\Program Files\obs-studio\obs-plugins\64bit\simple-streamer.dll');
