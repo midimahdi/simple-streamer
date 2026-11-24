@@ -3831,7 +3831,10 @@ function setLiveUI(isLive) {
 
     setStatus('LIVE', 'live');
     if (el.liveContainer) el.liveContainer.style.display = 'block';
-    if (el.inputGroup) el.inputGroup.style.display = 'none';
+    if (el.inputGroup) el.inputGroup.style.display = 'block';
+    if (el.templateSelector) el.templateSelector.style.display = 'none';
+    const thumbGroup = document.querySelector('.thumbnail-control-group');
+    if (thumbGroup) thumbGroup.style.display = 'none';
     if (el.settingsLiveBar) el.settingsLiveBar.style.display = nav.currentView !== 'broadcast' ? 'flex' : 'none';
     if (el.destLockedNotice) el.destLockedNotice.style.display = 'block';
 
@@ -3855,6 +3858,9 @@ function setLiveUI(isLive) {
     setStatus('● CONNECTED', 'connected');
     if (el.liveContainer) el.liveContainer.style.display = 'none';
     if (el.inputGroup) el.inputGroup.style.display = 'block';
+    if (el.templateSelector) el.templateSelector.style.display = '';
+    const thumbGroup = document.querySelector('.thumbnail-control-group');
+    if (thumbGroup) thumbGroup.style.display = '';
     if (el.liveMetadataUpdateBar) el.liveMetadataUpdateBar.style.display = 'none';
     if (el.settingsLiveBar) el.settingsLiveBar.style.display = 'none';
     if (el.destLockedNotice) el.destLockedNotice.style.display = 'none';
@@ -3873,12 +3879,70 @@ function renderPlatformLiveGrid() {
   if (!el.platformLiveGrid) return;
   el.platformLiveGrid.innerHTML = '';
 
+  const activeIds = new Set();
+
   state.activeBroadcast.destinations.forEach((dest, idx) => {
+    activeIds.add(dest.id);
     const card = document.createElement('div');
     card.className = 'platform-live-card';
     card.id = `liveCard_${dest.id}`;
 
+    const isPrimary = idx === 0;
     const isFailed = dest.status === 'failed';
+    const isEnded = dest.status === 'ended';
+    const icon = PLATFORM_ICONS[dest.platform] || '';
+
+    let badgeClass = 'status-connecting';
+    let badgeText = 'STARTING...';
+    if (isEnded) {
+      badgeClass = 'status-offline';
+      badgeText = 'ENDED';
+    } else if (isFailed) {
+      badgeClass = 'status-error';
+      badgeText = 'FAILED';
+    } else if (dest.isLive) {
+      badgeClass = 'status-live';
+      badgeText = 'LIVE';
+    }
+
+    card.innerHTML = `
+      <div class="platform-live-title">
+        ${icon}
+        <span class="platform-live-name" title="${dest.name || dest.platform.toUpperCase()}">${dest.name || dest.platform.toUpperCase()}</span>
+      </div>
+      <div class="platform-live-actions">
+        ${isEnded ? `
+          <button type="button" class="btn-start-platform" id="btnStart_${dest.id}" onclick="startPlatformMidStream('${dest.id}')" title="Start streaming to this platform">
+            ▶ Go Live
+          </button>
+        ` : `
+          <button type="button" class="btn-retry-platform" id="btnRetry_${dest.id}" style="${isFailed ? 'display: inline-block;' : 'display: none;'}" onclick="retryDestination('${dest.id}')" title="Retry this platform">
+            ↻ Retry
+          </button>
+          ${!isPrimary ? `
+            <button type="button" class="btn-stop-platform" id="btnStop_${dest.id}" onclick="stopPlatformMidStream('${dest.id}')" title="End stream on this platform only">
+              ⏹ Stop
+            </button>
+          ` : ''}
+        `}
+        <span id="liveBadge_${dest.id}" class="platform-live-badge ${badgeClass}" title="${dest.errorMessage || ''}">
+          <span class="live-dot">●</span>
+          <span class="live-text">${badgeText}</span>
+        </span>
+      </div>
+    `;
+
+    el.platformLiveGrid.appendChild(card);
+  });
+
+  // Render standby destinations (configured in Dock, not yet started in this broadcast)
+  state.destinations.forEach((dest) => {
+    if (activeIds.has(dest.id)) return;
+    if (dest.status === 'invalid' && !dest.credentials?.streamKey && !dest.streamKey) return;
+
+    const card = document.createElement('div');
+    card.className = 'platform-live-card';
+    card.id = `liveCard_${dest.id}`;
     const icon = PLATFORM_ICONS[dest.platform] || '';
     card.innerHTML = `
       <div class="platform-live-title">
@@ -3886,16 +3950,15 @@ function renderPlatformLiveGrid() {
         <span class="platform-live-name" title="${dest.name || dest.platform.toUpperCase()}">${dest.name || dest.platform.toUpperCase()}</span>
       </div>
       <div class="platform-live-actions">
-        <button type="button" class="btn-retry-platform" id="btnRetry_${dest.id}" style="${isFailed ? 'display: inline-block;' : 'display: none;'}" onclick="retryDestination('${dest.id}')" title="Retry this platform">
-          ↻ Retry
+        <button type="button" class="btn-start-platform" id="btnStart_${dest.id}" onclick="startPlatformMidStream('${dest.id}')" title="Add and start this platform mid-stream">
+          ▶ Go Live
         </button>
-        <span id="liveBadge_${dest.id}" class="platform-live-badge ${isFailed ? 'status-error' : 'status-connecting'}" title="${dest.errorMessage || ''}">
+        <span id="liveBadge_${dest.id}" class="platform-live-badge status-offline">
           <span class="live-dot">●</span>
-          <span class="live-text">${isFailed ? 'FAILED' : 'STARTING...'}</span>
+          <span class="live-text">STANDBY</span>
         </span>
       </div>
     `;
-
     el.platformLiveGrid.appendChild(card);
   });
 
@@ -3907,7 +3970,7 @@ function renderPlatformLiveGrid() {
  */
 function updateLiveHeaderDynamic() {
   if (!el.liveHeader) return;
-  const dests = state.activeBroadcast.destinations;
+  const dests = (state.activeBroadcast.destinations || []).filter((d) => d.status !== 'ended');
   if (!dests || dests.length === 0) {
     el.liveHeader.textContent = '● OBS STREAMING (PRIMARY ONLY)';
     el.liveHeader.style.color = '#38bdf8';
@@ -4083,6 +4146,216 @@ async function retryDestination(destId) {
 window.retryDestination = retryDestination;
 
 /**
+ * Stop a single secondary destination mid-stream without ending the main OBS broadcast
+ */
+async function stopPlatformMidStream(destId) {
+  const dest = state.activeBroadcast.destinations.find((d) => d.id === destId);
+  if (!dest || dest.id === state.activeBroadcast.destinations[0]?.id) return;
+
+  const label = dest.name || dest.platform.toUpperCase();
+  showAlert(
+    `STOP ${label.toUpperCase()}?`,
+    `This will end the live stream on ${label} only. Your other active platforms will keep streaming.`,
+    [
+      { label: 'Cancel', onClick: () => {} },
+      {
+        label: `⏹ Stop ${label}`,
+        onClick: async () => {
+          const stopBtn = document.getElementById(`btnStop_${destId}`);
+          if (stopBtn) {
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Stopping...';
+          }
+          try {
+            try {
+              await state.obs.call('StopOutput', { outputName: `simple_streamer_out_${destId}` });
+            } catch (_) {}
+
+            try {
+              const token = getAuthToken();
+              const hwid = await syncDeviceHwidFromBridge();
+              await fetch(`${state.config.backendUrl}/end-live`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                  ...(hwid ? { 'x-device-hwid': hwid } : {}),
+                  ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
+                },
+                body: JSON.stringify({
+                  ...(token ? { token } : {}),
+                  ...(hwid ? { hwid } : {}),
+                  destinations: [{
+                    id: dest.id,
+                    platform: dest.platform,
+                    broadcastId: dest.broadcastId,
+                    liveVideoId: dest.liveVideoId,
+                    refreshToken: dest.refreshToken || dest.credentials?.refreshToken,
+                    accessToken: dest.accessToken || dest.credentials?.accessToken,
+                  }],
+                }),
+              });
+            } catch (endErr) {
+              logDiag(`Note on cloud teardown for ${label}: ${endErr.message}`);
+            }
+
+            dest.status = 'ended';
+            dest.isLive = false;
+            dest.localOutputActive = false;
+            dest.cloudStatus = 'ENDED';
+            dest.errorMessage = null;
+            logDiag(`✓ Stopped ${label} individually (other platforms remain live).`);
+            renderPlatformLiveGrid();
+          } catch (err) {
+            logDiag(`Failed stopping ${label}: ${err.message}`);
+          }
+        },
+      },
+    ]
+  );
+}
+window.stopPlatformMidStream = stopPlatformMidStream;
+
+/**
+ * Start a standby or previously stopped destination mid-stream
+ */
+async function startPlatformMidStream(destId) {
+  if (!state.isStreaming) return;
+
+  const baseDest = state.destinations.find((d) => d.id === destId)
+    || state.activeBroadcast.destinations.find((d) => d.id === destId);
+  if (!baseDest) return;
+
+  const label = baseDest.name || baseDest.platform.toUpperCase();
+  const startBtn = document.getElementById(`btnStart_${destId}`);
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting...';
+  }
+  updateCardBadge(destId, 'connecting', 'STARTING...');
+
+  try {
+    // 1. Pre-flight bridge check
+    let bridgeAlive = false;
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 1500);
+      const bRes = await fetch('http://127.0.0.1:45455/remote-config', { mode: 'cors', signal: ctrl.signal });
+      clearTimeout(tid);
+      bridgeAlive = bRes.ok;
+    } catch (_) {}
+    if (!bridgeAlive) {
+      throw new Error('Local bridge (port 45455) is not running.');
+    }
+
+    // 2. Orchestrate single destination via cloud backend
+    const title = el.lessonTitle ? el.lessonTitle.value.trim() : (state.activeBroadcast.title || 'Live Stream');
+    const description = el.lessonDescription ? el.lessonDescription.value.trim() : (state.activeBroadcast.description || '');
+    const token = getAuthToken();
+    const hwid = await syncDeviceHwidFromBridge();
+
+    const res = await fetch(`${state.config.backendUrl}/orchestrate-live`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(hwid ? { 'x-device-hwid': hwid } : {}),
+        ...(state.config.apiKey ? { 'x-api-key': state.config.apiKey } : {}),
+      },
+      body: JSON.stringify({
+        ...(token ? { token } : {}),
+        ...(hwid ? { hwid } : {}),
+        title: title || 'Live Stream',
+        description,
+        destinations: [{
+          id: baseDest.id,
+          platform: baseDest.platform,
+          name: baseDest.name,
+          ...(baseDest.credentials || {}),
+        }],
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    const dRes = (data.destinations || []).find((d) => d.id === baseDest.id) || data.destinations?.[0];
+    let serverUrl = dRes?.serverUrl || baseDest.credentials?.serverUrl || baseDest.serverUrl || '';
+    let streamKey = dRes?.streamKey || baseDest.credentials?.streamKey || baseDest.streamKey || '';
+
+    if (dRes && dRes.ok === false && (!serverUrl || !streamKey)) {
+      throw new Error(dRes.error || 'Orchestration failed');
+    }
+    if (baseDest.platform === 'kick' && serverUrl && !serverUrl.includes('/app')) {
+      serverUrl = serverUrl.replace(/\/+$/, '') + ':443/app';
+    }
+
+    // 3. Upsert into activeBroadcast.destinations
+    let activeDest = state.activeBroadcast.destinations.find((d) => d.id === baseDest.id);
+    if (!activeDest) {
+      activeDest = { ...baseDest };
+      state.activeBroadcast.destinations.push(activeDest);
+    }
+    Object.assign(activeDest, {
+      serverUrl,
+      streamKey,
+      broadcastId: dRes?.broadcastId || null,
+      liveVideoId: dRes?.liveVideoId || null,
+      broadcasterId: dRes?.broadcasterId || activeDest.broadcasterId || null,
+      channelSlug: dRes?.channelSlug || activeDest.channelSlug || null,
+      refreshToken: dRes?.refreshToken || baseDest.credentials?.refreshToken || null,
+      accessToken: dRes?.accessToken || baseDest.credentials?.accessToken || null,
+      userToken: dRes?.userToken || baseDest.credentials?.userToken || null,
+      status: 'starting',
+      isLive: false,
+      localOutputActive: false,
+      cloudStatus: null,
+      errorMessage: null,
+      startedAt: Date.now(),
+    });
+
+    // 4. Save updated secondary outputs to bridge config.json and trigger C-plugin sync hotkey
+    const outputs = state.activeBroadcast.destinations
+      .slice(1)
+      .filter((s) => s.status !== 'ended' && s.status !== 'failed')
+      .map((s) => {
+        let srv = s.serverUrl || s.credentials?.serverUrl || '';
+        if (s.platform === 'kick' && srv && !srv.includes('/app')) {
+          srv = srv.replace(/\/+$/, '') + ':443/app';
+        }
+        return {
+          id: s.id,
+          name: s.name || s.platform,
+          server: srv,
+          key: s.streamKey || s.credentials?.streamKey || '',
+          enabled: true,
+        };
+      });
+
+    const saveRes = await fetch('http://127.0.0.1:45455/save-destinations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outputs }),
+      mode: 'cors',
+    });
+    if (!saveRes.ok) {
+      throw new Error(`Bridge returned HTTP ${saveRes.status}`);
+    }
+
+    await state.obs.call('TriggerHotkeyByName', { hotkeyName: 'simple_streamer.sync_outputs' });
+    logDiag(`✓ Triggered mid-stream start for ${label}.`);
+    renderPlatformLiveGrid();
+  } catch (err) {
+    logDiag(`Failed starting ${label} mid-stream: ${err.message}`);
+    showAlert(`FAILED TO START ${label.toUpperCase()}`, err.message);
+    renderPlatformLiveGrid();
+  }
+}
+window.startPlatformMidStream = startPlatformMidStream;
+
+/**
  * Real-Time Stream Metrics Polling via OBS WebSocket
  */
 function startMetricsPolling() {
@@ -4136,6 +4409,12 @@ function startMetricsPolling() {
       const secondaries = state.activeBroadcast.destinations.slice(1);
       for (let i = 0; i < secondaries.length; i++) {
         const secDest = secondaries[i];
+        if (secDest.status === 'ended') {
+          secDest.localOutputActive = false;
+          secDest.isLive = false;
+          updateCardBadge(secDest.id, 'offline', 'ENDED');
+          continue;
+        }
         const outputName = `simple_streamer_out_${secDest.id}`;
         let secStatus = null;
 
@@ -4161,7 +4440,7 @@ function startMetricsPolling() {
         } else if (stats.outputActive) {
           secDest.localOutputActive = false;
           secDest.isLive = false;
-          const elapsed = Date.now() - (state.streamStartTime || Date.now());
+          const elapsed = Date.now() - (secDest.startedAt || state.streamStartTime || Date.now());
           if (secDest.status === 'failed') {
             updateCardBadge(secDest.id, 'offline', 'FAILED');
           } else if (secDest.cloudStatus === 'ended' || secDest.cloudStatus === 'complete') {
@@ -4215,8 +4494,8 @@ function stopMetricsPolling() {
  * Periodically verifies platform lifecycle status directly via cloud backend
  */
 async function pollCloudStatus() {
-  const activeYT = state.activeBroadcast.destinations.find((d) => d.platform === 'youtube' && d.broadcastId);
-  const activeFB = state.activeBroadcast.destinations.find((d) => d.platform === 'facebook' && d.liveVideoId);
+  const activeYT = state.activeBroadcast.destinations.find((d) => d.platform === 'youtube' && d.broadcastId && d.status !== 'ended');
+  const activeFB = state.activeBroadcast.destinations.find((d) => d.platform === 'facebook' && d.liveVideoId && d.status !== 'ended');
 
   if (!activeYT && !activeFB) return;
 
@@ -4238,7 +4517,7 @@ async function pollCloudStatus() {
     const data = await res.json();
 
     if (activeFB && data.facebook) {
-      const elapsed = Date.now() - (state.streamStartTime || Date.now());
+      const elapsed = Date.now() - (activeFB.startedAt || state.streamStartTime || Date.now());
       const isSecondaryFB = state.activeBroadcast.destinations.indexOf(activeFB) > 0;
       const localOk = !isSecondaryFB || activeFB.localOutputActive === true;
       if (data.facebook.isLive && localOk) {

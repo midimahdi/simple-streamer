@@ -550,6 +550,56 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:f
   cursor: wait;
 }
 
+.btn-stop-platform {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+.btn-stop-platform:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.btn-stop-platform:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.btn-start-platform {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+.btn-start-platform:hover {
+  background: rgba(16, 185, 129, 0.35);
+  border-color: #10b981;
+  color: #fff;
+}
+
+.btn-start-platform:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .platform-svg.yt {
   color: #ef4444;
   flex-shrink: 0;

@@ -49,6 +49,7 @@ struct secondary_target {
 
 static struct secondary_target sec_targets[MAX_SECONDARY_OUTPUTS];
 static size_t num_sec_targets = 0;
+static obs_hotkey_id sync_outputs_hotkey_id = OBS_INVALID_HOTKEY_ID;
 
 static void on_secondary_stop(void *data, calldata_t *cd)
 {
@@ -106,11 +107,44 @@ static inline bool is_target_enabled(obs_data_t *item)
 	return false;
 }
 
+static struct secondary_target *find_secondary_target(const char *id)
+{
+	if (!id || !*id) return NULL;
+	for (size_t i = 0; i < num_sec_targets; i++) {
+		if (strcmp(sec_targets[i].id, id) == 0)
+			return &sec_targets[i];
+	}
+	return NULL;
+}
+
 static void start_single_secondary_target(const char *id, const char *name, const char *server, const char *key, obs_encoder_t *venc, obs_encoder_t *aenc)
 {
-	if (num_sec_targets >= MAX_SECONDARY_OUTPUTS) {
-		blog(LOG_WARNING, "[SimpleStreamer] Max secondary outputs reached (%d)", MAX_SECONDARY_OUTPUTS);
-		return;
+	struct secondary_target *existing = find_secondary_target(id);
+	struct secondary_target *target = NULL;
+	bool is_new_slot = false;
+
+	if (existing) {
+		if (existing->output && obs_output_active(existing->output)) {
+			blog(LOG_INFO, "[SimpleStreamer] Secondary output '%s' (%s) is already active.", name, id);
+			return;
+		}
+		if (existing->output) {
+			obs_output_release(existing->output);
+			existing->output = NULL;
+		}
+		if (existing->service) {
+			obs_service_release(existing->service);
+			existing->service = NULL;
+		}
+		existing->running = false;
+		target = existing;
+	} else {
+		if (num_sec_targets >= MAX_SECONDARY_OUTPUTS) {
+			blog(LOG_WARNING, "[SimpleStreamer] Max secondary outputs reached (%d)", MAX_SECONDARY_OUTPUTS);
+			return;
+		}
+		target = &sec_targets[num_sec_targets];
+		is_new_slot = true;
 	}
 
 	char out_name[128];
@@ -145,7 +179,6 @@ static void start_single_secondary_target(const char *id, const char *name, cons
 	obs_output_set_video_encoder(out, venc);
 	obs_output_set_audio_encoder(out, aenc, 0);
 
-	struct secondary_target *target = &sec_targets[num_sec_targets];
 	snprintf(target->id, sizeof(target->id), "%s", id);
 	snprintf(target->name, sizeof(target->name), "%s", name);
 	target->output = out;
@@ -160,7 +193,8 @@ static void start_single_secondary_target(const char *id, const char *name, cons
 	if (obs_output_start(out)) {
 		target->running = true;
 		blog(LOG_INFO, "[SimpleStreamer] ✓ Started secondary output [%s] to %s", out_name, server);
-		num_sec_targets++;
+		if (is_new_slot)
+			num_sec_targets++;
 	} else {
 		const char *err = obs_output_get_last_error(out);
 		blog(LOG_ERROR, "[SimpleStreamer] Failed to start output %s: %s", out_name, err ? err : "Unknown");
@@ -274,6 +308,89 @@ static void start_all_secondary_outputs(void)
 	}
 
 	obs_data_release(cfg);
+}
+
+static void sync_new_secondary_outputs(void)
+{
+	if (!obs_frontend_streaming_active()) {
+		blog(LOG_WARNING, "[SimpleStreamer] sync_new_secondary_outputs skipped: main stream is not active.");
+		return;
+	}
+
+	char *cfg_path = obs_module_config_path("config.json");
+	if (!cfg_path) return;
+
+	obs_data_t *cfg = obs_data_create_from_json_file(cfg_path);
+	if (!cfg) {
+		bfree(cfg_path);
+		return;
+	}
+
+	if (obs_data_get_bool(cfg, "armed")) {
+		obs_data_set_bool(cfg, "armed", false);
+		obs_data_save_json_safe(cfg, cfg_path, "tmp", "bak");
+	}
+	bfree(cfg_path);
+
+	obs_output_t *main_out = obs_frontend_get_streaming_output();
+	if (!main_out) {
+		obs_data_release(cfg);
+		return;
+	}
+
+	obs_encoder_t *venc = obs_output_get_video_encoder(main_out);
+	obs_encoder_t *aenc = obs_output_get_audio_encoder(main_out, 0);
+
+	char main_server[512] = {0};
+	obs_service_t *main_svc = obs_output_get_service(main_out);
+	if (main_svc) {
+		obs_data_t *svc_settings = obs_service_get_settings(main_svc);
+		if (svc_settings) {
+			const char *srv = obs_data_get_string(svc_settings, "server");
+			if (srv && *srv) snprintf(main_server, sizeof(main_server), "%s", srv);
+			obs_data_release(svc_settings);
+		}
+	}
+	obs_output_release(main_out);
+
+	if (!venc || !aenc) {
+		obs_data_release(cfg);
+		return;
+	}
+
+	obs_data_array_t *outputs_array = obs_data_get_array(cfg, "outputs");
+	if (outputs_array) {
+		size_t count = obs_data_array_count(outputs_array);
+		for (size_t i = 0; i < count; i++) {
+			obs_data_t *item = obs_data_array_item(outputs_array, i);
+			bool enabled = is_target_enabled(item);
+			const char *id = obs_data_get_string(item, "id");
+			const char *name = obs_data_get_string(item, "name");
+			const char *server = obs_data_get_string(item, "server");
+			const char *key = obs_data_get_string(item, "key");
+
+			if (enabled && id && *id && server && *server && key && *key) {
+				if (main_server[0] && strstr(server, main_server) != NULL) {
+					blog(LOG_INFO, "[SimpleStreamer] Sync skip '%s': matches primary server.", name);
+				} else {
+					start_single_secondary_target(id, name, server, key, venc, aenc);
+				}
+			}
+			obs_data_release(item);
+		}
+		obs_data_array_release(outputs_array);
+	}
+	obs_data_release(cfg);
+}
+
+static void on_sync_outputs_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(id);
+	UNUSED_PARAMETER(hotkey);
+	if (!pressed) return;
+	blog(LOG_INFO, "[SimpleStreamer] Hotkey triggered: syncing mid-stream secondary outputs...");
+	sync_new_secondary_outputs();
 }
 
 static void on_frontend_event(enum obs_frontend_event event, void *private_data)
@@ -454,6 +571,11 @@ bool obs_module_load(void)
 	blog(LOG_INFO, "[SimpleStreamer] Multi-Output Plugin loaded (version 2.2.0)");
 	ensure_bridge_running();
 	obs_frontend_add_event_callback(on_frontend_event, NULL);
+	sync_outputs_hotkey_id = obs_hotkey_register_frontend(
+		"simple_streamer.sync_outputs",
+		"Simple Streamer: Sync Secondary Outputs",
+		on_sync_outputs_hotkey,
+		NULL);
 	obs_frontend_add_tools_menu_item("Simple Streamer: Open Mobile Remote", open_mobile_remote_action, NULL);
 	obs_frontend_add_tools_menu_item("Simple Streamer: Open Studio Dock", open_studio_dock_action, NULL);
 	return true;
@@ -461,6 +583,10 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
+	if (sync_outputs_hotkey_id != OBS_INVALID_HOTKEY_ID) {
+		obs_hotkey_unregister(sync_outputs_hotkey_id);
+		sync_outputs_hotkey_id = OBS_INVALID_HOTKEY_ID;
+	}
 	obs_frontend_remove_event_callback(on_frontend_event, NULL);
 	release_all_secondary_outputs();
 	blog(LOG_INFO, "[SimpleStreamer] Multi-Output Plugin unloaded");
